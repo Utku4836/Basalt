@@ -1,0 +1,22 @@
+# Build output and tools
+**/target/
+**/node_modules/
+.tools/
+runtime/system/
+*.log
+*.partial
+
+# Kept locally, not part of the repository
+docs/
+design/
+scripts/
+verification/
+app/tests/
+Launch.bat
+
+# Secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key

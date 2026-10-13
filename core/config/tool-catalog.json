@@ -1,0 +1,392 @@
+[
+  {
+    "id": "claude",
+    "name": "Claude Code",
+    "dir": "ClaudeCode",
+    "bin": "claude",
+    "installer": {
+      "type": "npm",
+      "package": "@anthropic-ai/claude-code"
+    },
+    "sharing": {
+      "sharedSessions": [
+        ".claude/projects",
+        ".claude/history.jsonl",
+        ".claude/todos"
+      ],
+      "sharedModels": [
+        ".claude/cache"
+      ],
+      "sharedConfig": [
+        ".claude/settings.json"
+      ],
+      "sharedSkills": [
+        ".claude/skills"
+      ]
+    },
+    "mcp": {
+      "path": ".claude/.claude.json",
+      "format": "jsonc",
+      "key": "mcpServers"
+    },
+    "permission_args": [
+      "--dangerously-skip-permissions"
+    ]
+  },
+  {
+    "id": "codex",
+    "name": "Codex",
+    "dir": "Codex",
+    "bin": "codex",
+    "installer": {
+      "type": "npm",
+      "package": "@openai/codex"
+    },
+    "sharing": {
+      "sharedSessions": [
+        ".codex/sessions",
+        ".codex/archived_sessions",
+        ".codex/history.jsonl",
+        ".codex/session_index.jsonl",
+        ".codex/state_*.sqlite"
+      ],
+      "sharedModels": [
+        ".codex/models_cache.json",
+        ".codex/version.json"
+      ],
+      "sharedConfig": [],
+      "sharedSkills": [
+        ".codex/skills"
+      ]
+    },
+    "mcp": {
+      "path": ".codex/config.toml",
+      "format": "toml",
+      "key": "mcp_servers"
+    },
+    "permission_args": [
+      "--dangerously-bypass-approvals-and-sandbox"
+    ]
+  },
+  {
+    "id": "opencode",
+    "name": "OpenCode",
+    "dir": "OpenCode",
+    "bin": "opencode",
+    "installer": {
+      "type": "npm",
+      "package": "opencode-ai"
+    },
+    "sharing": {
+      "sharedSessions": [
+        ".local/share/opencode/opencode.db",
+        ".local/share/opencode/repos"
+      ],
+      "sharedModels": [
+        ".cache/opencode"
+      ],
+      "sharedConfig": [],
+      "sharedSkills": [
+        ".config/opencode/skills"
+      ]
+    },
+    "mcp": {
+      "path": ".config/opencode/opencode.json",
+      "format": "jsonc",
+      "key": "mcp"
+    },
+    "permission_args": [
+      "--auto"
+    ]
+  },
+  {
+    "id": "agy",
+    "name": "Antigravity CLI",
+    "dir": "Antigravity",
+    "bin": "agy",
+    "installer": {
+      "type": "agy-release",
+      "manifest": "https://antigravity-cli-auto-updater-974169037036.us-central1.run.app/manifests/windows_amd64.json",
+      "url": "https://antigravity.google/cli/install.ps1",
+      "args": [
+        "--skip-path",
+        "--skip-aliases"
+      ]
+    },
+    "sharing": {
+      "sharedSessions": [
+        ".gemini/antigravity-cli/conversations",
+        ".gemini/antigravity-cli/conversation_summaries.db",
+        ".gemini/antigravity-cli/implicit",
+        ".gemini/antigravity-cli/knowledge"
+      ],
+      "sharedModels": [
+        ".gemini/antigravity-cli/cache"
+      ],
+      "sharedConfig": [
+        ".gemini/antigravity-cli/settings.json",
+        ".gemini/config/config.json"
+      ],
+      "sharedSkills": [
+        ".gemini/config/skills",
+        ".gemini/antigravity-cli/skills"
+      ]
+    },
+    "mcp": {
+      "path": ".gemini/config/mcp_config.json",
+      "format": "file"
+    },
+    "permission_args": [
+      "--dangerously-skip-permissions"
+    ]
+  },
+  {
+    "id": "aider",
+    "name": "Aider",
+    "dir": "Aider",
+    "bin": "aider",
+    "installer": {
+      "type": "powershell-script",
+      "url": "https://aider.chat/install.ps1"
+    },
+    "sharing": {
+      "sharedSessions": [
+        ".aider/chat.history.md",
+        ".aider/input.history",
+        ".aider/llm.history"
+      ],
+      "sharedModels": [
+        ".aider/model*.json"
+      ],
+      "sharedConfig": [
+        ".aider/aider.json",
+        ".aider/aider.conf.yml"
+      ],
+      "sharedSkills": []
+    },
+    "mcp": null,
+    "permission_args": [
+      "--yes-always"
+    ]
+  },
+  {
+    "id": "copilot",
+    "name": "GitHub Copilot CLI",
+    "dir": "CopilotCLI",
+    "bin": "copilot",
+    "installer": {
+      "type": "npm",
+      "package": "@github/copilot"
+    },
+    "sharing": {
+      "sharedSessions": [
+        ".copilot/session-state",
+        ".copilot/sidebar-sessions-state",
+        ".copilot/session-store.db"
+      ],
+      "sharedModels": [
+        ".copilot/models*.json"
+      ],
+      "sharedConfig": [
+        ".copilot/config.json"
+      ],
+      "sharedSkills": [
+        ".copilot/skills"
+      ]
+    },
+    "mcp": {
+      "path": ".copilot/mcp-config.json",
+      "format": "file"
+    },
+    "permission_args": [
+      "--allow-all"
+    ]
+  },
+  {
+    "id": "cursor-agent",
+    "name": "Cursor Agent",
+    "dir": "CursorAgent",
+    "bin": "cursor-agent",
+    "installer": {
+      "type": "cursor-release",
+      "url": "https://cursor.com/install?win32=true"
+    },
+    "sharing": {
+      "sharedSessions": [
+        ".cursor/chats",
+        ".cursor/projects",
+        ".cursor/agent-cli-state.json"
+      ],
+      "sharedModels": [
+        ".cursor/models*.json"
+      ],
+      "sharedConfig": [
+        ".cursor/cli-config.json"
+      ],
+      "sharedSkills": [
+        ".cursor/skills"
+      ]
+    },
+    "mcp": {
+      "path": ".cursor/mcp.json",
+      "format": "file"
+    },
+    "permission_args": [
+      "--yolo"
+    ]
+  },
+  {
+    "id": "amp",
+    "name": "Amp",
+    "dir": "Amp",
+    "bin": "amp",
+    "installer": {
+      "type": "npm",
+      "package": "@ampcode/cli"
+    },
+    "sharing": {
+      "sharedSessions": [
+        ".local/share/amp/threads"
+      ],
+      "sharedModels": [
+        ".cache/amp/models"
+      ],
+      "sharedConfig": [],
+      "sharedSkills": [
+        ".config/agents/skills",
+        ".config/amp/skills"
+      ]
+    },
+    "mcp": {
+      "path": ".config/amp/settings.json",
+      "format": "jsonc",
+      "key": "amp.mcpServers"
+    },
+    "permission_args": []
+  },
+  {
+    "id": "goose",
+    "name": "Goose",
+    "dir": "Goose",
+    "bin": "goose",
+    "installer": {
+      "type": "github-release",
+      "repo": "aaif-goose/goose",
+      "asset": "goose-x86_64-pc-windows-msvc.zip",
+      "executable": "goose.exe"
+    },
+    "sharing": {
+      "sharedSessions": [
+        "AppData/Roaming/Block/goose/data/sessions"
+      ],
+      "sharedModels": [
+        "AppData/Roaming/Block/goose/data/models"
+      ],
+      "sharedConfig": [],
+      "sharedSkills": [
+        ".config/goose/skills"
+      ]
+    },
+    "mcp": {
+      "path": "AppData/Roaming/Block/goose/config/config.yaml",
+      "format": "yaml",
+      "key": "extensions"
+    },
+    "permission_args": []
+  },
+  {
+    "id": "crush",
+    "name": "Crush",
+    "dir": "Crush",
+    "bin": "crush",
+    "installer": {
+      "type": "npm",
+      "package": "@charmland/crush"
+    },
+    "sharing": {
+      "sharedSessions": [
+        ".local/share/crush/sessions",
+        ".local/share/crush/projects.json"
+      ],
+      "sharedModels": [
+        ".cache/crush/models"
+      ],
+      "sharedConfig": [],
+      "sharedSkills": [
+        ".config/crush/skills"
+      ]
+    },
+    "mcp": {
+      "path": ".config/crush/crush.json",
+      "format": "jsonc",
+      "key": "mcp"
+    },
+    "permission_args": [
+      "--yolo"
+    ]
+  },
+  {
+    "id": "qwen",
+    "name": "Qwen Code",
+    "dir": "QwenCode",
+    "bin": "qwen",
+    "installer": {
+      "type": "npm",
+      "package": "@qwen-code/qwen-code"
+    },
+    "sharing": {
+      "sharedSessions": [
+        ".qwen/sessions",
+        ".qwen/history"
+      ],
+      "sharedModels": [
+        ".qwen/models*.json"
+      ],
+      "sharedConfig": [],
+      "sharedSkills": [
+        ".qwen/skills"
+      ]
+    },
+    "mcp": {
+      "path": ".qwen/settings.json",
+      "format": "jsonc",
+      "key": "mcpServers"
+    },
+    "permission_args": [
+      "--approval-mode",
+      "yolo"
+    ]
+  },
+  {
+    "id": "kimi",
+    "name": "Kimi Code",
+    "dir": "KimiCode",
+    "bin": "kimi",
+    "installer": {
+      "type": "npm",
+      "package": "@moonshot-ai/kimi-code"
+    },
+    "sharing": {
+      "sharedSessions": [
+        ".kimi-code/sessions",
+        ".kimi-code/session_index.jsonl"
+      ],
+      "sharedModels": [
+        ".kimi-code/models"
+      ],
+      "sharedConfig": [
+        ".kimi-code/config.toml"
+      ],
+      "sharedSkills": [
+        ".kimi-code/skills"
+      ]
+    },
+    "mcp": {
+      "path": ".kimi-code/mcp.json",
+      "format": "file"
+    },
+    "permission_args": [
+      "--auto"
+    ]
+  }
+]

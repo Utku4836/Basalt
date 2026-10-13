@@ -1,0 +1,397 @@
+// Basalt main window, in the terminal idiom: one surface, the sidebar's sessions and
+// agents boxes, and terminal panes as frames beside them, all below an empty caption
+// strip that holds only the Windows caption buttons.
+import { Metrics } from "metrics.slint";
+import { Theme, Design } from "theme.slint";
+export { CellRenderTestWindow } from "testing/windows.slint";
+import { WorkspaceSidebar, WorkspaceItem, AgentItem, SessionProfileItem, ProfileTool } from "sidebar.slint";
+import { TerminalPane, PaneItem, TabItem } from "terminal-pane.slint";
+import { TerminalStyle, TerminalFrame, TerminalLine, TerminalRun, TerminalSurface } from "terminal-surface.slint";
+import { Appearance, InterfaceText, MonoText } from "typography.slint";
+import { IconKind } from "icons.slint";
+import { IconButton, Button, Surface, MenuRow, MenuDivider, MenuSection } from "controls.slint";
+import { CommandPalette, PaletteItem } from "palette.slint";
+export { PaletteItem }
+export { Appearance }
+export { Theme }
+export { Metrics }
+export { TerminalStyle, TerminalFrame, TerminalLine, TerminalRun }
+export { WorkspaceItem, PaneItem, TabItem }
+export { AgentItem, SessionProfileItem, ProfileTool }
+export struct DividerItem { id: string, left: float, top: float, width: float, height: float, horizontal: bool }
+export struct DropPreview { visible: bool, left: float, top: float, width: float, height: float }
+
+component Divider inherits Rectangle {
+    in property <DividerItem> item;
+    in property <length> offset-x: 0px;
+    callback move(string, float, float);
+    x: root.item.left * 1px - root.offset-x; y: root.item.top * 1px;
+    width: root.item.width * 1px; height: root.item.height * 1px;
+    // The pane boxes already separate panes; the gap lights up while hovered or dragged.
+    Rectangle {
+        x: root.item.horizontal ? (parent.width - 1px) / 2 : 0px; y: root.item.horizontal ? 0px : (parent.height - 1px) / 2;
+        width: root.item.horizontal ? 1px : parent.width; height: root.item.horizontal ? parent.height : 1px;
+        background: touch.pressed ? Theme.accent : touch.has-hover ? Theme.accent.transparentize(0.5) : transparent;
+    }
+    touch := TouchArea {
+        x: root.item.horizontal ? -8px : 0px; y: root.item.horizontal ? 0px : -8px;
+        width: parent.width + (root.item.horizontal ? 16px : 0px); height: parent.height + (root.item.horizontal ? 0px : 16px);
+        mouse-cursor: root.item.horizontal ? ew-resize : ns-resize;
+        moved => { if self.pressed { root.move(root.item.id, root.item.left + (self.x + self.mouse-x) / 1px, root.item.top + (self.y + self.mouse-y) / 1px); } }
+    }
+}
+
+export component MainWindow inherits Window {
+    in-out property <int> selection-epoch;
+    in property <string> app-title;
+    in property <string> agent-summary;
+    callback reset-workspace-appearance;
+
+    in property <string> workspace-title;
+    in property <bool> empty-workspace;
+    in property <bool> has-workspace;
+    in property <length> caption-width: 138px;
+    in property <bool> window-maximized;
+    // The caption button under the pointer (0–2, -1 none) and whether it is held.
+    in property <int> caption-hover: -1;
+    in property <bool> caption-pressed;
+    in property <[WorkspaceItem]> workspaces;
+    in property <[PaneItem]> panes;
+    in property <[PaneItem]> dock-panes;
+    in property <[DividerItem]> dock-dividers;
+    in property <bool> dock-visible: false;
+    in property <bool> dock-focused: false;
+    in property <bool> canvas-mode: false;
+    in-out property <length> dock-width: 320px;
+    in property <[DividerItem]> dividers;
+    in property <DropPreview> drop-preview;
+    in property <string> selected-workspace;
+    in-out property <bool> sidebar-visible: true;
+    in-out property <length> sidebar-width: Metrics.sidebar-width;
+    in-out property <string> message;
+    in property <[PaletteItem]> palette-items;
+    callback palette-query(string);
+    callback palette-run(string);
+    // History search (Ctrl+R): past commands of the focused terminal's profile.
+    in property <[PaletteItem]> history-items;
+    in property <string> history-scope: "all folders";
+    callback history-query(string);
+    callback history-run(string);
+    callback history-scope-switch;
+    callback history-forget(string);
+    in property <[AgentItem]> agents;
+    in property <[SessionProfileItem]> session-profiles;
+    in property <string> session-profile-id;
+    callback profile-select(string);
+    callback profile-new;
+    callback profile-rename(string, string);
+    callback profile-delete(string);
+    callback profile-tool(string, string, string);
+    callback profile-share(string, string, bool);
+
+    callback terminal-selection(string,int,int,int,int);
+    callback dock-focus;
+    callback canvas-pan(float,float);
+    callback command-execute(string);
+    callback font-change(int);
+    callback terminal-font-change(int);
+    callback color-change(int);
+    callback chrome-action(int);
+    callback workspace-select(string);
+    callback workspace-close(string);
+    callback workspace-rename(string, string);
+    callback workspace-duplicate(string);
+    callback workspace-move(string,int);
+    callback pane-action(string, int);
+    callback tab-select(string, string);
+    callback tab-close(string, string);
+    callback tab-drag(string, string, float, float, bool);
+    callback tab-geometry(string, float, float);
+    callback pane-focus(string);
+    callback pane-scroll(string, float);
+    callback layout(float, float);
+    callback chrome-metrics(float);
+    callback header-controls(float,float);
+    callback divider-move(string, float, float);
+    callback key-input(string, bool, bool, bool, bool);
+    callback new-session;
+
+    public function show-palette() { workspace-menu.close(); empty-menu.close(); palette.show(); }
+    public function show-history() { workspace-menu.close(); empty-menu.close(); palette.close(); history-search.show(); }
+    public function focus-terminal() { keyboard.focus(); }
+    public function show-workspace-menu() { palette.close(); workspace-menu.show(); }
+    out property <float> content-width: max(0px, root.card-right - root.layout-card-x - (root.dock-visible ? root.dock-width + 1px : 0px)) / 1px;
+    out property <float> content-height: content.height / 1px;
+    // Window position of the pane area, for hit tests and drop math.
+    out property <float> content-left: (card.x + content.x) / 1px;
+    out property <float> content-top: (card.y + content.y) / 1px;
+    out property <float> cell-width: glyph-measure.preferred-width / 32 / 1px;
+    out property <float> cell-height: ceil(glyph-measure.preferred-height / 1px);
+    // The caption strip has no controls: all of it, up to the buttons, moves the window.
+    out property <float> header-control-left: 0;
+    out property <float> header-control-width: 0;
+    changed header-control-width => { root.header-controls(root.header-control-left, root.header-control-width); }
+    changed header-control-left => { root.header-controls(root.header-control-left, root.header-control-width); }
+    out property <float> header-height: Metrics.titlebar-height / 1px;
+    out property <float> header-font-height: header-font-probe.preferred-height / 1px;
+    out property <float> tab-font-height: tab-font-probe.preferred-height / 1px;
+    changed header-font-height => { Metrics.header-font-height = root.header-font-height * 1px; }
+    changed tab-font-height => { Metrics.tab-font-height = root.tab-font-height * 1px; }
+    changed header-height => { root.chrome-metrics(root.header-height); }
+
+    title: root.app-title;
+    preferred-width: 1440px; preferred-height: 900px; min-width: 640px; min-height: 400px;
+    no-frame: false;
+    background: transparent;
+    default-font-family: Appearance.mono; default-font-size: 13px;
+    changed content-width => { root.layout(root.content-width, root.content-height); }
+    changed content-height => { root.layout(root.content-width, root.content-height); }
+    changed cell-width => { TerminalStyle.cell-width = root.cell-width * 1px; root.layout(root.content-width, root.content-height); }
+    changed cell-height => { TerminalStyle.cell-height = root.cell-height * 1px; root.layout(root.content-width, root.content-height); }
+
+    // Average an entire monospace run rather than rounding each glyph's width.
+    glyph-measure := Text { text: "MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM"; font-family: TerminalStyle.font-family; font-size: TerminalStyle.font-size; visible: false; }
+    header-font-probe := MonoText { text: "Agİpqy"; font-size: Design.title-size; visible: false; }
+    tab-font-probe := MonoText { text: "Agİpqy"; font-size: Appearance.text-size(Metrics.tab-title-size); visible: false; }
+    forward-focus: keyboard;
+    keyboard := FocusScope {
+        key-pressed(event) => {
+            root.key-input(event.text, event.modifiers.control, event.modifiers.shift, event.modifiers.alt, event.modifiers.meta);
+            accept
+        }
+    }
+
+    // ── Frame ──
+    Rectangle { width: root.width; height: root.height; background: Theme.frame; }
+    // 0 = sidebar hidden, 1 = shown.
+    private property <float> sidebar-reveal: root.sidebar-visible ? 1 : 0;
+    animate sidebar-reveal { duration: Design.smooth; easing: cubic-bezier(0.2, 0.8, 0.2, 1); }
+    // Pane boxes sit 3px inside the pane area, so a 5px margin gives the boxes 8px.
+    private property <length> target-card-x: root.sidebar-visible ? root.sidebar-width : 5px;
+    private property <length> card-x: 5px + (root.sidebar-width - 5px) * root.sidebar-reveal;
+    // While the sidebar moves, terminals keep their previous grid and resize once afterwards.
+    private property <bool> sliding: false;
+    private property <length> layout-card-x: root.sliding ? (root.sidebar-visible ? 5px : root.sidebar-width) : root.target-card-x;
+    changed sidebar-visible => { root.sliding = true; }
+    Timer { interval: Design.smooth + 20ms; running: root.sliding; triggered => { root.sliding = false; } }
+    private property <length> card-right: root.width - 5px;
+    // ── Pane area: each pane draws its own box ──
+    card := Rectangle {
+        x: root.card-x; y: Metrics.titlebar-height;
+        width: max(0px, root.card-right - self.x); height: max(0px, root.height - self.y - 5px);
+        clip: true;
+        content := Rectangle {
+            x: 0px; y: 0px;
+            width: max(0px, card.width - (root.dock-visible ? root.dock-width + 1px : 0px));
+            height: card.height;
+            clip: true;
+            if root.canvas-mode : TouchArea {
+                scroll-event(event) => { root.canvas-pan(-event.delta-x / 1px, -event.delta-y / 1px); accept }
+            }
+            // No session open: the area stays empty; right-click opens a terminal.
+            if root.empty-workspace || !root.has-workspace : TouchArea {
+                accessible-role: button; accessible-label: "Empty Pane Area";
+                pointer-event(event) => {
+                    if event.kind == PointerEventKind.down && event.button == PointerEventButton.right {
+                        root.empty-menu-x = self.absolute-position.x + self.mouse-x;
+                        root.empty-menu-y = self.absolute-position.y + self.mouse-y;
+                        empty-menu.show();
+                    }
+                }
+            }
+            for pane in root.panes : TerminalPane {
+                selection-epoch: root.selection-epoch;
+                x: pane.left * 1px; y: pane.top * 1px; width: pane.width * 1px; height: pane.height * 1px;
+                data: pane; agents: root.agents; canvas-mode: root.canvas-mode; alone: root.panes.length == 1;
+                canvas-pan(x,y) => { root.canvas-pan(x,y); }
+                selection(id,a,b,c,d) => { root.terminal-selection(id,a,b,c,d); }
+                action(id, action) => { root.pane-action(id, action); keyboard.focus(); }
+                select(pane, tab) => { root.tab-select(pane, tab); keyboard.focus(); }
+                close(pane, tab) => { root.tab-close(pane, tab); keyboard.focus(); }
+                pane-focused(id) => { root.pane-focus(id); keyboard.focus(); }
+                commands => { root.show-palette(); }
+                scroll(id, delta) => { root.pane-scroll(id, delta); }
+                tab-drag(pane, tab, x, y, finished) => { root.tab-drag(pane, tab, x, y, finished); }
+                tab-geometry(tab, x, width) => { root.tab-geometry(tab, x, width); }
+            }
+            for divider in root.dividers : Divider { item: divider; move(id, x, y) => { root.divider-move(id, x, y); } }
+            if root.drop-preview.visible : Rectangle {
+                x: root.drop-preview.left * 1px; y: root.drop-preview.top * 1px;
+                width: root.drop-preview.width * 1px; height: root.drop-preview.height * 1px;
+                border-width: 1px; border-color: Theme.accent; border-radius: Design.radius; background: Theme.accent.transparentize(0.88);
+            }
+        }
+
+        // ── Dock: a shared terminal rail beside the panes ──
+        if root.dock-visible : Rectangle {
+            x: content.x + content.width; y: 0px; width: 1px; height: card.height;
+            accessible-role: slider; accessible-label: "Resize Dock";
+            TouchArea {
+                x: -6px; width: 13px; mouse-cursor: ew-resize;
+                moved => { if self.pressed {
+                    root.dock-width = clamp(root.dock-width - self.mouse-x - self.x, 240px, max(240px, min(800px, card.width - 300px)));
+                } }
+            }
+        }
+        if root.dock-visible : Rectangle {
+            x: content.x + content.width + 1px; y: content.y;
+            width: root.dock-width; height: content.height; clip: true;
+            if root.dock-panes.length == 0 : VerticalLayout {
+                x: 16px; y: max(16px, (parent.height - self.preferred-height) / 2); width: max(0px, parent.width - 32px); height: self.preferred-height;
+                spacing: 6px; alignment: center;
+                MonoText { text: "dock"; color: Theme.text; font-size: Design.title-size; font-weight: 600; horizontal-alignment: center; height: self.preferred-height; }
+                MonoText { text: "One terminal that follows you across sessions."; color: Theme.faint; font-size: Design.small-size; horizontal-alignment: center; wrap: word-wrap; height: self.preferred-height; }
+                Rectangle { height: 8px; }
+                HorizontalLayout {
+                    alignment: center;
+                    Button { label: "Open Terminal"; accessible-label: "Open Dock Terminal"; clicked => { root.dock-focus(); root.chrome-action(6); } }
+                }
+            }
+            for pane in root.dock-panes : TerminalPane {
+                selection-epoch: root.selection-epoch;
+                x: pane.left * 1px - content.width - 1px; y: pane.top * 1px; width: pane.width * 1px; height: pane.height * 1px;
+                data: pane; agents: root.agents; alone: root.dock-panes.length == 1;
+                selection(id,a,b,c,d) => { root.terminal-selection(id,a,b,c,d); }
+                action(id, action) => { root.pane-action(id, action); keyboard.focus(); }
+                select(pane, tab) => { root.tab-select(pane, tab); keyboard.focus(); }
+                close(pane, tab) => { root.tab-close(pane, tab); keyboard.focus(); }
+                pane-focused(id) => { root.pane-focus(id); keyboard.focus(); }
+                commands => { root.show-palette(); }
+                scroll(id, delta) => { root.pane-scroll(id, delta); }
+                tab-drag(pane, tab, x, y, finished) => { root.tab-drag(pane, tab, x, y, finished); }
+                tab-geometry(tab, x, width) => { root.tab-geometry(tab, x, width); }
+            }
+            for divider in root.dock-dividers : Divider { item: divider; offset-x: content.width + 1px; move(id, x, y) => { root.divider-move(id, x, y); } }
+        }
+    }
+
+    // ── Notice: a dismissible toast at the bottom of the pane area ──
+    if root.message != "" : Surface {
+        width: min(card.width - 32px, notice.preferred-width + 60px); height: max(36px, Design.row-height + 10px);
+        x: card.x + (card.width - self.width) / 2; y: card.y + card.height - self.height - 16px;
+        notice := MonoText { x: 14px; width: parent.width - 52px; height: parent.height; text: root.message; color: Theme.text; font-size: Design.ui-size; overflow: elide; }
+        IconButton { x: parent.width - 32px; y: (parent.height - self.height) / 2; width: 24px; height: 24px; icon: IconKind.close; label: "Dismiss Notice"; clicked => { root.message = ""; } }
+    }
+
+    // ── Sidebar: kept alive while hidden, so showing it never builds it from scratch ──
+    WorkspaceSidebar {
+        visible: root.sidebar-reveal > 0.001;
+        x: (root.sidebar-reveal - 1) * root.sidebar-width; y: card.y; width: root.sidebar-width; height: card.height;
+        workspaces: root.workspaces; selected: root.selected-workspace;
+        agents: root.agents;
+        profiles: root.session-profiles; profile-id: root.session-profile-id;
+        profile-select(id) => { root.profile-select(id); keyboard.focus(); }
+        profile-new => { root.profile-new(); keyboard.focus(); }
+        profile-rename(id, name) => { root.profile-rename(id, name); keyboard.focus(); }
+        profile-delete(id) => { root.profile-delete(id); keyboard.focus(); }
+        profile-tool(id, tool, action) => { root.profile-tool(id, tool, action); }
+        profile-share(id, kind, on) => { root.profile-share(id, kind, on); }
+        new-session => { root.new-session(); keyboard.focus(); }
+        select(id) => { root.workspace-select(id); keyboard.focus(); }
+        delete(id) => { root.workspace-close(id); keyboard.focus(); }
+        duplicate(id) => { root.workspace-duplicate(id); keyboard.focus(); }
+        rename(id, name) => { root.workspace-rename(id, name); keyboard.focus(); }
+    }
+    if root.sidebar-visible : Rectangle {
+        x: root.sidebar-width - 6px; y: card.y; width: 8px; height: card.height;
+        TouchArea {
+            mouse-cursor: ew-resize;
+            moved => { if self.pressed { root.sidebar-width = clamp(root.sidebar-width + self.mouse-x - 4px, Metrics.sidebar-minimum-width, max(Metrics.sidebar-minimum-width, min(600px, root.width - 100px))); } }
+        }
+    }
+    // Caption buttons: Windows owns their input and tells which one is pointed at or
+    // held; they light up the way every Windows app's do, close in red.
+    Rectangle {
+        x: root.width - root.caption-width; y: 0px; width: root.caption-width; height: Metrics.titlebar-height;
+        for index in [0,1,2] : Rectangle {
+            property <bool> pointed: root.caption-hover == index;
+            property <bool> held: self.pointed && root.caption-pressed;
+            x: index * parent.width / 3; y: 0px; width: parent.width / 3; height: parent.height;
+            background: !self.pointed ? transparent
+                : index == 2 ? (self.held ? #C42B1C.with-alpha(0.85) : #C42B1C)
+                : (self.held ? #FFFFFF.transparentize(0.88) : #FFFFFF.transparentize(0.92));
+            animate background { duration: 120ms; easing: ease-out; }
+            Text {
+                x: 0px; y: 0px; width: parent.width; height: parent.height;
+                text: index == 0 ? "\u{e921}" : index == 1 ? (root.window-maximized ? "\u{e923}" : "\u{e922}") : "\u{e8bb}";
+                font-family: "Segoe MDL2 Assets"; font-size: 10px;
+                color: parent.pointed ? (index == 2 ? #FFFFFF : Theme.selected-text) : Theme.muted;
+                animate color { duration: 120ms; easing: ease-out; }
+                horizontal-alignment: center; vertical-alignment: center;
+                accessible-label: index == 0 ? "Minimize Window Icon" : index == 1 ? "Maximize Window Icon" : "Close Window Icon";
+            }
+        }
+    }
+
+    // ── Application menu ──
+    workspace-menu := PopupWindow {
+        x: max(8px, root.width - root.caption-width - self.width); y: Metrics.titlebar-height;
+        width: Appearance.text-size(250px);
+        height: min(9 * Design.row-height + 2 * 9px + 3 * (Appearance.text-size(11px) * 1.4 + 12px) + 12px, root.height - self.y - 8px);
+        Surface {
+            VerticalLayout {
+                padding: 6px; spacing: 0px;
+                MenuSection { title: "Session"; }
+                MenuRow { label: "New Session"; shortcut: "Ctrl+Shift+N"; clicked => { root.new-session(); workspace-menu.close(); keyboard.focus(); } }
+                MenuRow { label: "Toggle Sidebar"; shortcut: "Ctrl+Shift+B"; clicked => { root.sidebar-visible = !root.sidebar-visible; workspace-menu.close(); keyboard.focus(); } }
+                MenuDivider {}
+                MenuSection { title: "Terminal"; }
+                MenuRow { label: "New Terminal"; shortcut: "Ctrl+Shift+T"; clicked => { workspace-menu.close(); root.chrome-action(6); keyboard.focus(); } }
+                MenuRow { label: "Close Terminal"; shortcut: "Ctrl+Shift+W"; danger: true; clicked => { workspace-menu.close(); root.chrome-action(7); keyboard.focus(); } }
+                MenuDivider {}
+                MenuSection { title: "Application"; }
+                MenuRow { label: "Commands"; shortcut: "Ctrl+Shift+P"; clicked => { root.show-palette(); } }
+                MenuRow { label: "Toggle Dock"; clicked => { workspace-menu.close(); root.command-execute("toggle-dock"); keyboard.focus(); } }
+            }
+        }
+    }
+
+    // ── Empty pane area menu ──
+    private property <length> empty-menu-x;
+    private property <length> empty-menu-y;
+    empty-menu := PopupWindow {
+        x: min(root.empty-menu-x, root.width - self.width - 8px); y: min(root.empty-menu-y, root.height - self.height - 8px);
+        width: Appearance.text-size(240px); height: 2 * Design.row-height + 9px + 12px;
+        Surface {
+            VerticalLayout {
+                padding: 6px; spacing: 0px;
+                // In an empty session the terminal opens there; a new session only
+                // when none is open.
+                MenuRow { label: "New Terminal"; shortcut: "Ctrl+Shift+T"; clicked => { if root.has-workspace { root.chrome-action(6); } else { root.new-session(); } empty-menu.close(); keyboard.focus(); } }
+                MenuDivider {}
+                MenuRow { label: "Commands"; shortcut: "Ctrl+Shift+P"; clicked => { root.show-palette(); } }
+            }
+        }
+    }
+
+    // ── Command palette ──
+    palette := PopupWindow {
+        close-policy: close-on-click-outside;
+        x: max(8px, (root.width - self.width) / 2); y: Metrics.titlebar-height + 4px;
+        width: min(Appearance.text-size(600px), root.width - 32px);
+        height: palette-box.height;
+        palette-box := CommandPalette {
+            width: parent.width;
+            items: root.palette-items;
+            query(text) => { root.palette-query(text); }
+            run(id) => { palette.close(); root.palette-run(id); keyboard.focus(); }
+            dismiss => { palette.close(); keyboard.focus(); }
+        }
+    }
+    history-search := PopupWindow {
+        close-policy: close-on-click-outside;
+        x: max(8px, (root.width - self.width) / 2); y: Metrics.titlebar-height + 4px;
+        width: min(Appearance.text-size(720px), root.width - 32px);
+        height: history-box.height;
+        history-box := CommandPalette {
+            width: parent.width;
+            title: "history"; placeholder: "search past commands"; note: root.history-scope;
+            items: root.history-items;
+            query(text) => { root.history-query(text); }
+            run(id) => { history-search.close(); root.history-run(id); keyboard.focus(); }
+            switch-scope => { root.history-scope-switch(); }
+            remove(id) => { root.history-forget(id); }
+            dismiss => { history-search.close(); keyboard.focus(); }
+        }
+    }
+}

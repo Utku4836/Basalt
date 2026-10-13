@@ -1,0 +1,96 @@
+[
+  {
+    "id": "claude",
+    "file": "claude.png",
+    "url": "https://assets.claude.com/95a868946ac8a31e5ff832e2899f294aa368b836.png?w=96&h=96",
+    "bytes": 1198,
+    "copyright": "Marks belong to their respective owners; used to identify CLI choices."
+  },
+  {
+    "id": "codex",
+    "file": "codex.svg",
+    "url": "https://raw.githubusercontent.com/lobehub/lobe-icons/master/packages/static-svg/icons/openai.svg",
+    "bytes": 1687,
+    "copyright": "Marks belong to their respective owners; used to identify CLI choices.",
+    "note": "OpenAI provider mark used for Codex CLI identification.",
+    "variant": "transparent monochrome vector"
+  },
+  {
+    "id": "opencode",
+    "file": "opencode.svg",
+    "url": "https://raw.githubusercontent.com/lobehub/lobe-icons/master/packages/static-svg/icons/opencode.svg",
+    "bytes": 235,
+    "copyright": "Marks belong to their respective owners; used to identify CLI choices.",
+    "variant": "transparent monochrome vector"
+  },
+  {
+    "id": "agy",
+    "file": "agy.svg",
+    "url": "https://raw.githubusercontent.com/lobehub/lobe-icons/master/packages/static-svg/icons/antigravity.svg",
+    "bytes": 414,
+    "copyright": "Marks belong to their respective owners; used to identify CLI choices.",
+    "variant": "transparent monochrome vector"
+  },
+  {
+    "id": "aider",
+    "file": "aider.svg",
+    "url": "https://raw.githubusercontent.com/paul-gauthier/aider/HEAD/aider/website/assets/logo.svg",
+    "bytes": 5742,
+    "copyright": "Marks belong to their respective owners; used to identify CLI choices.",
+    "variant": "official transparent wordmark"
+  },
+  {
+    "id": "copilot",
+    "file": "copilot.svg",
+    "url": "https://raw.githubusercontent.com/primer/octicons/HEAD/icons/copilot-24.svg",
+    "bytes": 1689,
+    "copyright": "Marks belong to their respective owners; used to identify CLI choices."
+  },
+  {
+    "id": "cursor-agent",
+    "file": "cursor-agent.svg",
+    "url": "https://raw.githubusercontent.com/lobehub/lobe-icons/master/packages/static-svg/icons/cursor.svg",
+    "bytes": 547,
+    "copyright": "Marks belong to their respective owners; used to identify CLI choices.",
+    "variant": "transparent monochrome vector"
+  },
+  {
+    "id": "amp",
+    "file": "amp.svg",
+    "url": "https://raw.githubusercontent.com/lobehub/lobe-icons/master/packages/static-svg/icons/amp.svg",
+    "bytes": 515,
+    "copyright": "Marks belong to their respective owners; used to identify CLI choices.",
+    "variant": "transparent monochrome vector"
+  },
+  {
+    "id": "goose",
+    "file": "goose.svg",
+    "url": "https://raw.githubusercontent.com/lobehub/lobe-icons/master/packages/static-svg/icons/goose.svg",
+    "bytes": 1807,
+    "copyright": "Marks belong to their respective owners; used to identify CLI choices.",
+    "variant": "transparent monochrome vector"
+  },
+  {
+    "id": "crush",
+    "file": "crush.svg",
+    "url": "https://raw.githubusercontent.com/charmbracelet/crush/HEAD/internal/cmd/stats/heartbit.svg",
+    "bytes": 1861,
+    "copyright": "Marks belong to their respective owners; used to identify CLI choices.",
+    "variant": "transparent brand symbol"
+  },
+  {
+    "id": "qwen",
+    "file": "qwen.png",
+    "url": "https://img.alicdn.com/imgextra/i4/O1CN01OXv3EM1FN8t9W4P79_!!6000000000474-2-tps-80-80.png",
+    "bytes": 1658,
+    "copyright": "Marks belong to their respective owners; used to identify CLI choices."
+  },
+  {
+    "id": "kimi",
+    "file": "kimi.svg",
+    "url": "https://moonshotai.github.io/Branding-Guide/scenarios/04-k-only/k-only-dark.svg",
+    "bytes": 1083,
+    "copyright": "Marks belong to their respective owners; used to identify CLI choices.",
+    "variant": "transparent brand symbol"
+  }
+]

@@ -1,0 +1,137 @@
+// A terminal pane: the terminal inside one flat, dark grey frame. The focused pane's
+// frame is lighter; an agent waiting for input turns it amber. Double-click the top
+// edge to zoom the pane in place; right-click anywhere for its menu.
+import { Metrics } from "metrics.slint";
+import { Theme, Design } from "theme.slint";
+import { TerminalSurface, TerminalFrame } from "terminal-surface.slint";
+import { Appearance, MonoText } from "typography.slint";
+import { Surface, MenuRow, MenuDivider } from "controls.slint";
+import { AgentItem } from "sidebar.slint";
+
+export struct TabItem { id: string, title: string, selected: bool, pinned: bool, tool: string }
+export struct PaneItem { id: string, left: float, top: float, width: float, height: float, tabs: [TabItem], frame: TerminalFrame, focused: bool, status: string, selected-title: string, full-title:string, selected-tab: string, selected-pinned: bool, zoomed:bool }
+
+export component TerminalPane inherits Rectangle {
+    in property <int> selection-epoch;
+    in property <bool> canvas-mode: false;
+    // The only pane in its workspace: zooming would change nothing.
+    in property <bool> alone: false;
+    in property <PaneItem> data;
+    in property <[AgentItem]> agents;
+    callback canvas-pan(float,float);
+    callback action(string,int);
+    callback selection(string,int,int,int,int);
+    callback select(string,string);
+    callback close(string,string);
+    callback pane-focused(string);
+    callback scroll(string,float);
+    callback tab-drag(string,string,float,float,bool);
+    callback tab-geometry(string,float,float);
+    callback commands;
+    background: Theme.terminal; clip: true; min-width: 0px; min-height: 0px;
+
+    // Geometry contract with viewport::panel_inner_rect (12px on every side): the frame
+    // sits 3px inside the pane and the terminal body 9px inside the frame.
+    private property <length> menu-left;
+    private property <length> menu-top;
+    private property <length> menu-width: Appearance.text-size(280px);
+    private property <length> menu-height: (root.alone ? 5 : 6) * Design.row-height + 2 * 9px + 12px;
+    private property <color> outline: root.data.focused && Appearance.active ? Theme.box-focus : Theme.box-line;
+
+    public function open-menu(x: length, y: length) {
+        // Inside the pane's frame, never on it.
+        root.menu-left = clamp(x, 8px, max(8px, root.width - root.menu-width - 8px));
+        root.menu-top = clamp(y, 8px, max(8px, root.height - root.menu-height - 8px));
+        root.pane-focused(root.data.id);
+        panel-menu.show();
+    }
+    // 2 new pane, 13 zoom, 4 own window, 10 copy, 11 paste; anything else closes.
+    public function menu-action(index: int) {
+        panel-menu.close();
+        if index == 2 || index == 13 || index == 10 || index == 11 { root.action(root.data.id, index); }
+        else if !root.data.selected-pinned && root.data.selected-tab != "" { root.close(root.data.id, root.data.selected-tab); }
+    }
+
+    // ── Frame ──
+    Rectangle {
+        x: 3px; y: 3px; width: max(0px, parent.width - 6px); height: max(0px, parent.height - 6px);
+        border-width: Theme.box-width; border-color: root.outline;
+    }
+    // An agent waiting on you colors its frame.
+    for agent in root.agents : Rectangle {
+        visible: agent.tab == root.data.selected-tab && agent.state == 3;
+        x: 3px; y: 3px; width: max(0px, parent.width - 6px); height: max(0px, parent.height - 6px);
+        border-width: Theme.box-width; border-color: Theme.amber.transparentize(0.25);
+    }
+
+    body := Rectangle {
+        x: 12px; y: 12px;
+        width: max(0px, parent.width - 24px); height: max(0px, parent.height - self.y - 12px);
+        terminal-surface := TerminalSurface {
+            x: 2px; width: max(0px, parent.width - 4px); height: parent.height;
+            reset-epoch: root.selection-epoch; frame: root.data.frame;
+            selection(a,b,c,d) => { root.selection(root.data.id, a, b, c, d); }
+        }
+        TouchArea {
+            private property <bool> selecting: false;
+            private property <length> anchor-x;
+            private property <length> anchor-y;
+            private property <bool> panning: false;
+            private property <float> last-x;
+            private property <float> last-y;
+            pointer-event(event) => {
+                if event.kind == PointerEventKind.down && event.button == PointerEventButton.left {
+                    root.pane-focused(root.data.id); self.selecting = true;
+                    self.anchor-x = self.mouse-x; self.anchor-y = self.mouse-y; terminal-surface.clear-selection();
+                }
+                if event.kind == PointerEventKind.up && event.button == PointerEventButton.left {
+                    if self.selecting && (abs(self.mouse-x - self.anchor-x) > 3px || abs(self.mouse-y - self.anchor-y) > 3px) { terminal-surface.finish-selection(); }
+                    self.selecting = false;
+                }
+                if event.kind == PointerEventKind.down && event.button == PointerEventButton.right { root.open-menu(parent.x + self.mouse-x, parent.y + self.mouse-y); }
+                if root.canvas-mode && event.button == PointerEventButton.middle {
+                    self.panning = event.kind == PointerEventKind.down;
+                    self.last-x = root.data.left + self.mouse-x / 1px; self.last-y = root.data.top + self.mouse-y / 1px;
+                }
+            }
+            moved => {
+                if self.selecting && self.pressed { terminal-surface.select(self.anchor-x - 2px, self.anchor-y, self.mouse-x - 2px, self.mouse-y); }
+                if self.panning {
+                    let px = root.data.left + self.mouse-x / 1px; let py = root.data.top + self.mouse-y / 1px;
+                    root.canvas-pan(self.last-x - px, self.last-y - py); self.last-x = px; self.last-y = py;
+                }
+            }
+            scroll-event(event) => { root.scroll(root.data.id, event.delta-y / 1px); accept }
+        }
+        if root.data.status != "" : MonoText {
+            x: 4px; y: 4px; width: max(0px, parent.width - 8px); height: self.preferred-height;
+            vertical-alignment: top; text: root.data.status; color: Theme.muted; font-size: Design.small-size; wrap: word-wrap;
+        }
+    }
+
+    // ── Top edge: click focuses, double-click zooms, right-click opens the menu ──
+    edge-touch := TouchArea {
+        x: 0px; y: 0px; width: parent.width; height: 12px;
+        clicked => { root.pane-focused(root.data.id); }
+        double-clicked => { if !root.alone { root.action(root.data.id, 13); } }
+        pointer-event(event) => {
+            if event.kind == PointerEventKind.down && event.button == PointerEventButton.right { root.open-menu(self.mouse-x, self.mouse-y); }
+        }
+    }
+    panel-menu := PopupWindow {
+        x: root.menu-left; y: root.menu-top; width: root.menu-width; height: root.menu-height;
+        Surface {
+            VerticalLayout {
+                padding: 6px; spacing: 0px;
+                MenuRow { label: "New Terminal"; shortcut: "Ctrl+Shift+T"; clicked => { root.menu-action(2); } }
+                if !root.alone : MenuRow { label: root.data.zoomed ? "Restore Layout" : "Zoom Pane"; shortcut: "Ctrl+Shift+Enter"; clicked => { root.menu-action(13); } }
+                MenuDivider {}
+                MenuRow { label: "Copy"; shortcut: "Ctrl+Shift+C"; clicked => { root.menu-action(10); } }
+                MenuRow { label: "Paste"; shortcut: "Ctrl+Shift+V"; clicked => { root.menu-action(11); } }
+                MenuRow { label: "Close Terminal"; danger: true; enabled: !root.data.selected-pinned; clicked => { root.menu-action(0); } }
+                MenuDivider {}
+                MenuRow { label: "Commands"; shortcut: "Ctrl+Shift+P"; clicked => { panel-menu.close(); root.commands(); } }
+            }
+        }
+    }
+}

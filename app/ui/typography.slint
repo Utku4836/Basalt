@@ -1,0 +1,26 @@
+// Text scale and the typeface: the interface speaks the terminal's monospace.
+export global Appearance {
+    in-out property <float> dpi: 1;
+    // False while another window is in front; focus accents soften.
+    in-out property <bool> active: true;
+    in-out property <int> font-percent: 100;
+    in-out property <int> terminal-font-percent: 100;
+    // The monospace face for the interface and terminals. Rust picks JetBrains Mono
+    // Nerd Font when it is installed (icons and powerline glyphs), else Cascadia Mono.
+    in-out property <string> mono: "Cascadia Mono";
+    public pure function snap(value: length) -> length { return round(value / 1px * self.dpi) / self.dpi * 1px; }
+    // Typography is a logical font size, not a manually rounded bitmap size.
+    public pure function text-size(value: length) -> length { return value * 1.15 * self.font-percent / 100; }
+}
+
+export component InterfaceText inherits Text {
+    font-weight: 400;
+    font-family: Appearance.mono;
+    vertical-alignment: center;
+}
+
+export component MonoText inherits Text {
+    font-weight: 400;
+    font-family: Appearance.mono;
+    vertical-alignment: center;
+}

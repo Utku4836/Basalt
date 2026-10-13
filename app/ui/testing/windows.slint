@@ -1,0 +1,7 @@
+import {TerminalFrame,TerminalSurface} from "../terminal-surface.slint";
+import { Appearance } from "../typography.slint";
+export component CellRenderTestWindow inherits Window {
+    in property <TerminalFrame> frame;
+    width: 1200px; height: 400px;
+    TerminalSurface { width: parent.width; height: parent.height; frame: root.frame; }
+}

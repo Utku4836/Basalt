@@ -1,0 +1,17 @@
+// Window chrome metrics shared by Slint and the Rust layout / native hit testing.
+import { Appearance } from "typography.slint";
+export global Metrics {
+    in-out property <length> header-font-height: 0px;
+    in-out property <length> tab-font-height: 0px;
+    // The native caption band: an empty strip that moves the window, with the Windows
+    // caption buttons at its right end. Every box starts below it.
+    out property <length> titlebar-height: 32px;
+    // Gap between neighbouring boxes, and between the boxes and the window edges.
+    out property <length> box-gap: 7px;
+    // Box title band: the title sits on the box's top edge. The Rust grid reserves
+    // it (viewport::panel_inner_rect).
+    out property <length> tabbar-height: max(18px, self.tab-font-height + 4px);
+    out property <length> sidebar-width: 236px;
+    out property <length> sidebar-minimum-width: 180px;
+    out property <length> tab-title-size: 11.5px;
+}

@@ -1,0 +1,39 @@
+[workspace]
+members = ["app", "core", "vendor/alacritty_terminal"]
+# `cargo build` and `cargo run` mean the app.
+default-members = ["app"]
+resolver = "2"
+
+[workspace.package]
+edition = "2024"
+rust-version = "1.85.0"
+
+# Day-to-day debug builds stay responsive: dependencies (Slint, Skia, the terminal
+# engine) are optimized, the workspace's own crates keep fast rebuilds.
+[profile.dev.package."*"]
+opt-level = 3
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+strip = true
+debug = false
+
+# Keep local validation artifacts small; production release settings stay unchanged.
+[profile.dev]
+# Light optimization keeps the terminal renderer usable in debug builds.
+opt-level = 1
+debug = 1
+incremental = false
+
+[profile.test]
+debug = 1
+incremental = false
+
+# Skia over WGPU resizes the swap chain while Skia still holds its buffers; the patch
+# waits for Skia first, as Slint's Direct3D surface does.
+[patch.crates-io]
+i-slint-renderer-skia = { path = "patches/i-slint-renderer-skia" }
+# Fonts embedded in the program, found by family name like installed ones.
+crossfont = { path = "patches/crossfont" }

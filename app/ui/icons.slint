@@ -1,0 +1,35 @@
+// Stroke icon set (assets/icons): 16px grid, drawn at 4x and tinted at runtime.
+export enum IconKind { menu, sidebar, back, forward, search, plus, folder-plus, folder, terminal, dock, sliders,
+    split-right, split-down, more, close, chevron-down, git, focus, check, keyboard, user, palette, dots, external }
+
+export component Icon inherits Image {
+    in property <IconKind> kind;
+    in property <color> tint;
+    width: 16px; height: 16px;
+    image-fit: contain;
+    colorize: root.tint;
+    source: root.kind == IconKind.menu ? @image-url("../assets/icons/menu.svg")
+        : root.kind == IconKind.sidebar ? @image-url("../assets/icons/sidebar.svg")
+        : root.kind == IconKind.back ? @image-url("../assets/icons/arrow-left.svg")
+        : root.kind == IconKind.forward ? @image-url("../assets/icons/arrow-right.svg")
+        : root.kind == IconKind.search ? @image-url("../assets/icons/search.svg")
+        : root.kind == IconKind.plus ? @image-url("../assets/icons/plus.svg")
+        : root.kind == IconKind.folder-plus ? @image-url("../assets/icons/folder-plus.svg")
+        : root.kind == IconKind.folder ? @image-url("../assets/icons/folder.svg")
+        : root.kind == IconKind.terminal ? @image-url("../assets/icons/terminal.svg")
+        : root.kind == IconKind.dock ? @image-url("../assets/icons/dock.svg")
+        : root.kind == IconKind.sliders ? @image-url("../assets/icons/sliders.svg")
+        : root.kind == IconKind.split-right ? @image-url("../assets/icons/split-right.svg")
+        : root.kind == IconKind.split-down ? @image-url("../assets/icons/split-down.svg")
+        : root.kind == IconKind.more ? @image-url("../assets/icons/more.svg")
+        : root.kind == IconKind.close ? @image-url("../assets/icons/close.svg")
+        : root.kind == IconKind.chevron-down ? @image-url("../assets/icons/chevron-down.svg")
+        : root.kind == IconKind.git ? @image-url("../assets/icons/git-branch.svg")
+        : root.kind == IconKind.focus ? @image-url("../assets/icons/focus.svg")
+        : root.kind == IconKind.check ? @image-url("../assets/icons/check.svg")
+        : root.kind == IconKind.keyboard ? @image-url("../assets/icons/keyboard.svg")
+        : root.kind == IconKind.user ? @image-url("../assets/icons/user.svg")
+        : root.kind == IconKind.palette ? @image-url("../assets/icons/palette.svg")
+        : root.kind == IconKind.dots ? @image-url("../assets/icons/dots.svg")
+        : @image-url("../assets/icons/external.svg");
+}

@@ -1,0 +1,102 @@
+// The command palette: a box under the caption strip with a prompt line and the
+// commands that match it. The prompt's angle marks the selected command and slides
+// between rows; there is no highlight box.
+import { Theme, Design } from "theme.slint";
+import { Appearance, MonoText } from "typography.slint";
+import { TuiBox } from "controls.slint";
+
+export struct PaletteItem { id: string, title: string, detail: string }
+
+export component CommandPalette inherits Rectangle {
+    in property <[PaletteItem]> items;
+    in property <string> title: "commands";
+    in property <string> placeholder: "type a command";
+    // A quiet note cut into the frame's right edge, such as the search scope.
+    in property <string> note;
+    in-out property <int> selected: 0;
+    callback query(string);
+    callback run(string);
+    callback dismiss;
+    // Tab, for a palette with more than one scope.
+    callback switch-scope;
+    // Shift+Delete on an entry, for palettes whose entries can be removed.
+    callback remove(string);
+    private property <length> line: Design.row-height;
+    private property <int> rows: 10;
+    private property <int> shown: min(root.items.length, root.rows);
+    // The first row in view, so the selection never leaves it.
+    private property <int> first: max(0, min(root.selected - root.rows + 1, root.items.length - root.rows));
+    private property <string> angle: Appearance.mono == "JetBrainsMono Nerd Font Mono" ? "\u{F105}" : "›";
+    // A fixed height: the popup keeps its place while the list narrows.
+    height: frame.overhang + 12px + root.line + 8px + root.rows * root.line + 10px;
+    init => { root.selected = 0; root.query(""); input.focus(); }
+
+    function choose() {
+        if root.items.length > 0 { root.run(root.items[root.selected].id); }
+    }
+
+    keys := FocusScope {
+        key-pressed(event) => {
+            if event.text == Key.UpArrow { root.selected = max(0, root.selected - 1); return accept; }
+            if event.text == Key.DownArrow { root.selected = min(root.items.length - 1, root.selected + 1); return accept; }
+            if event.text == Key.Escape { root.dismiss(); return accept; }
+            if event.text == Key.Tab { root.selected = 0; root.switch-scope(); return accept; }
+            if event.text == Key.Delete && event.modifiers.shift && root.items.length > 0 { root.remove(root.items[root.selected].id); return accept; }
+            reject
+        }
+        frame := TuiBox {
+            y: self.overhang; width: parent.width; height: parent.height - self.overhang;
+            title: root.title; note: root.note; line: Theme.box-focus; background: Theme.base;
+            MonoText {
+                x: 12px; y: 12px; width: 14px; height: root.line;
+                text: root.angle; font-weight: 700; color: Theme.text; font-size: Design.ui-size;
+            }
+            if input.text == "" : MonoText {
+                x: 30px; y: 12px; width: parent.width - 42px; height: root.line;
+                text: root.placeholder; color: Theme.faint; font-size: Design.ui-size;
+            }
+            input := TextInput {
+                x: 30px; y: 12px; width: parent.width - 42px; height: root.line;
+                single-line: true; vertical-alignment: center;
+                font-family: Appearance.mono; font-size: Design.ui-size; color: Theme.selected-text;
+                selection-background-color: Theme.box-focus;
+                accessible-label: root.title;
+                edited => { root.selected = 0; root.query(self.text); }
+                accepted => { root.choose(); }
+            }
+            Rectangle { x: 12px; y: 12px + root.line + 3px; width: parent.width - 24px; height: 1px; background: Theme.box-line; }
+            Rectangle {
+                x: 2px; y: 12px + root.line + 8px; width: parent.width - 4px; height: max(1, root.shown) * root.line;
+                clip: true;
+                if root.items.length == 0 : MonoText {
+                    x: 28px; height: root.line; text: "nothing matches"; color: Theme.faint; font-size: Design.ui-size;
+                }
+                if root.items.length > 0 : MonoText {
+                    x: 10px; y: (root.selected - root.first) * root.line; width: 14px; height: root.line;
+                    text: root.angle; font-weight: 700; color: Theme.text; font-size: Design.ui-size;
+                    animate y { duration: 90ms; easing: ease-out; }
+                }
+                for item[index] in root.items : Rectangle {
+                    y: (index - root.first) * root.line; width: parent.width; height: root.line;
+                    visible: index >= root.first && index < root.first + root.rows;
+                    accessible-role: button; accessible-label: item.title;
+                    accessible-action-default => { root.run(item.id); }
+                    MonoText {
+                        x: 28px; width: max(0px, parent.width - detail.width - 52px); height: parent.height;
+                        text: item.title; overflow: elide; font-size: Design.ui-size;
+                        color: index == root.selected ? Theme.selected-text : Theme.muted;
+                    }
+                    detail := MonoText {
+                        x: parent.width - self.width - 14px; width: self.preferred-width; height: parent.height;
+                        text: item.detail; color: Theme.faint; font-size: Design.small-size;
+                    }
+                    touch := TouchArea {
+                        mouse-cursor: pointer;
+                        changed has-hover => { if self.has-hover { root.selected = index; } }
+                        clicked => { root.run(item.id); }
+                    }
+                }
+            }
+        }
+    }
+}

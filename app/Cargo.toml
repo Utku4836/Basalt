@@ -1,0 +1,40 @@
+[package]
+name = "basalt"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license = "MIT"
+publish = false
+
+[dependencies]
+basalt_core = { path = "../core" }
+slint = { version = "=1.13.1", default-features = false, features = ["std", "backend-winit", "renderer-skia", "compat-1-2", "unstable-winit-030", "unstable-wgpu-26", "renderer-femtovg"] }
+# The terminal grid is drawn on the GPU with the same device Slint renders with.
+# (Slint 1.13.1 builds its WGPU support only alongside the OpenGL FemtoVG renderer;
+# Skia stays the renderer in use.)
+wgpu = { version = "26", default-features = false, features = ["dx12", "wgsl"] }
+crossfont = "0.8.1"
+# Registers the embedded terminal font with the interface's text (the patched copy).
+i-slint-renderer-skia = "=1.13.1"
+bytemuck = { version = "1", features = ["derive"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+uuid = { version = "1", features = ["v4", "serde"] }
+arboard = { version = "3", default-features = false }
+png = "0.17.16"
+raw-window-handle = "0.6"
+tokio = { version = "1", features = ["rt-multi-thread", "time"] }
+regex = "1"
+toml = "0.8"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_Graphics_Dwm", "Win32_UI_Controls", "Win32_UI_Shell", "Win32_UI_HiDpi", "Win32_UI_WindowsAndMessaging", "Win32_UI_Input_KeyboardAndMouse", "Win32_Graphics_Gdi", "Win32_System_Diagnostics_ToolHelp", "Win32_System_Threading"] }
+
+[build-dependencies]
+slint-build = "=1.13.1"
+winresource = "0.1"
+
+[dev-dependencies]
+i-slint-backend-testing = "=1.13.1"
+# Renders windows to pictures in tests, without a display.
+slint = { version = "=1.13.1", default-features = false, features = ["software-renderer-systemfonts"] }

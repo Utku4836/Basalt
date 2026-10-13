@@ -1,0 +1,54 @@
+// Design tokens in the terminal idiom: one surface, hairline boxes, one accent,
+// semantic status colors, monospace everywhere and no motion.
+import { Appearance } from "typography.slint";
+
+export global Theme {
+    // Persisted palette id. The picker offers 0–2; older saved ids still render.
+    in-out property <int> palette: 0;
+    // One surface for the whole window: sidebar, caption and terminals share it,
+    // so terminal output sits on the theme color itself. Black stays true AMOLED.
+    out property <color> base: self.palette == 1 ? #000000 : self.palette == 2 ? #2A2A2A : self.palette == 3 ? #1F2227
+        : self.palette == 4 ? #1A1F1C : self.palette == 5 ? #1F1C23 : self.palette == 6 ? #201D1A : self.palette == 7 ? #181E21 : #171A1F;
+    out property <color> terminal: self.base;
+    out property <color> sidebar: self.base;
+    out property <color> frame: self.base;
+    out property <color> tabbar: self.base;
+    // Menus and dialogs float one step above.
+    out property <color> panel: self.palette == 1 ? #141416 : self.base.mix(#FFFFFF, 0.94);
+
+    out property <color> hover: #FFFFFF.transparentize(0.95);
+    out property <color> selected: #FFFFFF.transparentize(0.915);
+    out property <color> line: #FFFFFF.transparentize(0.92);
+    out property <color> line-strong: #FFFFFF.transparentize(0.86);
+    out property <color> card-line: #FFFFFF.transparentize(0.93);
+    out property <color> divider: #FFFFFF.transparentize(0.9);
+    // Box frames: a flat dark grey; the focused pane's frame is a lighter grey.
+    out property <color> box-line: #FFFFFF.transparentize(0.87);
+    out property <color> box-focus: #FFFFFF.transparentize(0.7);
+    out property <length> box-width: 2px;
+
+    out property <color> text: #E8E8EA;
+    out property <color> selected-text: #FFFFFF;
+    out property <color> muted: #A4A4AB;
+    out property <color> faint: #74747C;
+
+    out property <color> accent: #7FD1C1;
+    out property <color> green: #8CCB8E;
+    out property <color> amber: #E2BE74;
+    out property <color> danger: #EC8A8A;
+}
+
+// Two small radii, the type scale, the standard row height and shared timings.
+// Timings are zero: state changes land at once, like a terminal UI.
+export global Design {
+    out property <length> radius: 3px;
+    out property <length> radius-large: 4px;
+    out property <string> sans: Appearance.mono;
+    out property <string> mono: Appearance.mono;
+    out property <length> ui-size: Appearance.text-size(12px);
+    out property <length> small-size: Appearance.text-size(11px);
+    out property <length> title-size: Appearance.text-size(13px);
+    out property <length> row-height: max(24px, Appearance.text-size(12px) * 1.3 + 6px);
+    out property <duration> quick: 0ms;
+    out property <duration> smooth: 0ms;
+}

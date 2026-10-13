@@ -1,0 +1,263 @@
+// Shared controls: quiet by default, one accent, hover as a white wash.
+import { Theme, Design } from "theme.slint";
+import { Metrics } from "metrics.slint";
+import { Appearance, InterfaceText, MonoText } from "typography.slint";
+import { Icon, IconKind } from "icons.slint";
+
+export component IconButton inherits Rectangle {
+    in property <IconKind> icon;
+    in property <string> label;
+    in property <bool> enabled: true;
+    in property <bool> active: false;
+    in property <color> tint: Theme.muted;
+    callback clicked;
+    // Lets a parent keep a hover-revealed button visible while the pointer is on it.
+    out property <bool> hovered: touch.has-hover;
+    width: 28px; height: 28px;
+    border-radius: Design.radius;
+    background: !root.enabled ? transparent : touch.pressed ? Theme.selected : touch.has-hover || root.active ? Theme.hover : transparent;
+    animate background { duration: Design.quick; easing: ease-out; }
+    accessible-role: button; accessible-label: root.label; accessible-enabled: root.enabled;
+    accessible-action-default => { if root.enabled { root.clicked(); } }
+    Icon {
+        x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2;
+        kind: root.icon;
+        tint: !root.enabled ? Theme.faint.transparentize(0.4) : touch.has-hover || root.active ? Theme.text : root.tint;
+    }
+    touch := TouchArea { enabled: root.enabled; mouse-cursor: pointer; clicked => { root.clicked(); } }
+}
+
+// kind: 0 secondary, 1 primary, 2 danger, 3 ghost
+export component Button inherits Rectangle {
+    in property <string> label;
+    in property <int> kind: 0;
+    in property <bool> enabled: true;
+    callback clicked;
+    min-width: label-text.preferred-width + 24px;
+    height: max(30px, Appearance.text-size(12px) * 1.4 + 12px);
+    border-radius: Design.radius;
+    border-width: root.kind == 0 ? 1px : 0px;
+    border-color: Theme.line-strong;
+    background: !root.enabled ? (root.kind == 1 ? Theme.selected : transparent)
+        : root.kind == 1 ? (touch.has-hover ? Theme.accent.brighter(0.08) : Theme.accent)
+        : root.kind == 2 ? (touch.has-hover ? Theme.danger.transparentize(0.78) : Theme.danger.transparentize(0.86))
+        : touch.pressed ? Theme.selected : touch.has-hover ? Theme.hover : transparent;
+    animate background { duration: Design.quick; easing: ease-out; }
+    accessible-role: button; accessible-label: root.label; accessible-enabled: root.enabled;
+    accessible-action-default => { if root.enabled { root.clicked(); } }
+    label-text := InterfaceText {
+        x: 12px; width: parent.width - 24px; height: parent.height;
+        text: root.label; overflow: elide; horizontal-alignment: center;
+        font-size: Design.ui-size; font-weight: root.kind == 1 ? 600 : 500;
+        color: !root.enabled ? Theme.faint : root.kind == 1 ? #0B1210 : root.kind == 2 ? Theme.danger : Theme.text;
+    }
+    touch := TouchArea { enabled: root.enabled; mouse-cursor: pointer; clicked => { root.clicked(); } }
+}
+
+export component MenuRow inherits Rectangle {
+    in property <string> label;
+    in property <string> shortcut;
+    in property <bool> danger: false;
+    in property <bool> enabled: true;
+    in property <bool> highlighted: false;
+    callback clicked;
+    height: Design.row-height;
+    private property <bool> pointed: root.enabled && (touch.has-hover || root.highlighted);
+    accessible-role: button; accessible-label: root.label; accessible-enabled: root.enabled;
+    accessible-action-default => { if root.enabled { root.clicked(); } }
+    // No highlight box: the prompt's angle slides in beside the pointed row, which
+    // brightens. A destructive row reads like the others until it is pointed at.
+    InterfaceText {
+        x: root.pointed ? 8px : 3px; width: 12px; height: parent.height;
+        text: Appearance.mono == "JetBrainsMono Nerd Font Mono" ? "\u{F105}" : "›";
+        font-size: Design.ui-size; font-weight: 700;
+        color: root.danger ? Theme.danger : Theme.text;
+        opacity: root.pointed ? 1 : 0;
+        animate x, opacity { duration: 90ms; easing: ease-out; }
+    }
+    InterfaceText {
+        x: 22px; width: max(0px, parent.width - hint.width - 40px); height: parent.height;
+        text: root.label; overflow: elide; font-size: Design.ui-size;
+        color: !root.enabled ? Theme.faint : root.danger && root.pointed ? Theme.danger
+            : root.pointed ? Theme.selected-text : Theme.muted;
+    }
+    hint := InterfaceText {
+        x: parent.width - self.width - 12px; width: self.preferred-width; height: parent.height;
+        text: root.shortcut; color: Theme.faint; font-size: Design.small-size; horizontal-alignment: right;
+    }
+    touch := TouchArea { enabled: root.enabled; mouse-cursor: pointer; clicked => { root.clicked(); } }
+}
+
+export component MenuDivider inherits Rectangle {
+    height: 9px;
+    Rectangle { x: 6px; y: 4px; width: parent.width - 12px; height: 1px; background: Theme.box-line; }
+}
+
+export component MenuSection inherits Rectangle {
+    in property <string> title;
+    height: Appearance.text-size(11px) * 1.4 + 12px;
+    InterfaceText { x: 22px; y: 4px; width: parent.width - 34px; height: parent.height - 4px; text: root.title; color: Theme.faint; font-size: Design.small-size; }
+}
+
+// Floating surface for menus, popovers and dialogs. Fades in when it appears.
+export component Surface inherits Rectangle {
+    opacity: 0;
+    init => { self.opacity = 1; }
+    animate opacity { duration: Design.quick; easing: ease-out; }
+    background: Theme.base;
+    border-width: Theme.box-width;
+    border-color: Theme.box-focus;
+    drop-shadow-blur: 16px;
+    drop-shadow-color: #00000060;
+}
+
+// A panel in the terminal idiom: one flat frame with its title cut into the top edge,
+// and a quiet note (a count) or an action ("+") cut into the edge on the right. The
+// gaps follow the text size, so a larger font never runs over the frame. The frame's
+// top edge is the box's own top; titles overhang above it by `overhang`.
+export component TuiBox inherits Rectangle {
+    in property <string> title;
+    in property <string> note;
+    in property <string> action;
+    in property <string> action-label;
+    in property <color> line: Theme.box-line;
+    callback act;
+    out property <length> overhang: title-chip.height / 2;
+    // Where content starts below the top edge.
+    out property <length> header: root.overhang + 6px;
+    Rectangle { border-width: Theme.box-width; border-color: root.line; }
+    title-chip := Rectangle {
+        // Title text lines up with the rows' text (26px in); the note with their right column.
+        x: 26px - 6px; y: -self.height / 2; height: title-text.preferred-height;
+        width: min(title-text.preferred-width + 12px, max(0px, parent.width - 28px - (right-chip.visible ? right-chip.width + 8px : 0px)));
+        background: Theme.base; clip: true;
+        title-text := MonoText {
+            x: 6px; width: max(0px, parent.width - 12px); height: parent.height;
+            text: root.title; color: Theme.text; font-size: Design.ui-size; font-weight: 600; overflow: elide;
+        }
+    }
+    right-chip := Rectangle {
+        visible: root.note != "" || root.action != "";
+        x: parent.width - self.width - 4px; y: -self.height / 2; height: title-chip.height;
+        width: right-row.preferred-width + 12px;
+        background: Theme.base;
+        right-row := HorizontalLayout {
+            x: 6px; spacing: 8px;
+            if root.note != "" : MonoText { text: root.note; color: Theme.faint; font-size: Design.ui-size; }
+            if root.action != "" : Rectangle {
+                width: action-text.preferred-width;
+                accessible-role: button; accessible-label: root.action-label;
+                accessible-action-default => { root.act(); }
+                action-text := MonoText {
+                    width: parent.width; height: parent.height;
+                    text: root.action; font-size: Design.ui-size;
+                    color: action-touch.has-hover ? Theme.selected-text : Theme.faint;
+                }
+                action-touch := TouchArea { mouse-cursor: pointer; clicked => { root.act(); } }
+            }
+        }
+    }
+    @children
+}
+
+// Dialog chrome: title row with close, hairline under it.
+export component DialogHeader inherits Rectangle {
+    in property <string> title;
+    in property <string> subtitle;
+    callback dismiss;
+    x: 0px; y: 0px; height: 48px;
+    InterfaceText { x: 16px; width: parent.width - 60px - sub.preferred-width; height: parent.height; text: root.title; color: Theme.selected-text; font-size: Design.title-size; font-weight: 600; overflow: elide; }
+    sub := InterfaceText { x: parent.width - 48px - self.preferred-width; width: self.preferred-width; height: parent.height; text: root.subtitle; color: Theme.faint; font-size: Design.small-size; }
+    IconButton { x: parent.width - 40px; y: 10px; icon: IconKind.close; label: "Close " + root.title; clicked => { root.dismiss(); } }
+    Rectangle { y: parent.height - 1px; height: 1px; background: Theme.line; }
+}
+
+export component Field inherits Rectangle {
+    in-out property <string> text;
+    in property <string> placeholder;
+    in property <string> label;
+    in property <bool> enabled: true;
+    in property <bool> mono: false;
+    callback accepted;
+    callback edited;
+    out property <bool> focused: input.has-focus;
+    forward-focus: input;
+    height: max(32px, Appearance.text-size(12px) * 1.4 + 14px);
+    border-radius: Design.radius;
+    background: #FFFFFF.transparentize(0.97);
+    border-width: 1px;
+    border-color: input.has-focus ? Theme.accent.transparentize(0.3) : Theme.line-strong;
+    InterfaceText {
+        x: 10px; width: parent.width - 20px; height: parent.height;
+        visible: root.text == ""; text: root.placeholder; color: Theme.faint; font-size: Design.ui-size;
+        font-family: root.mono ? Design.mono : Design.sans;
+    }
+    input := TextInput {
+        x: 10px; width: parent.width - 20px; height: parent.height;
+        text <=> root.text; enabled: root.enabled; single-line: true;
+        font-family: root.mono ? Design.mono : Design.sans;
+        font-size: Design.ui-size; color: root.enabled ? Theme.text : Theme.faint; vertical-alignment: center;
+        selection-background-color: Theme.accent.transparentize(0.6); selection-foreground-color: Theme.selected-text;
+        accessible-label: root.label;
+        accepted => { root.accepted(); }
+        edited => { root.edited(); }
+    }
+}
+
+export component FieldLabel inherits InterfaceText {
+    color: Theme.muted; font-size: Design.small-size; height: self.preferred-height;
+}
+
+// One-glyph agent status: spinner while working, otherwise a settled mark.
+export component StatusGlyph inherits Rectangle {
+    in property <bool> running;
+    in property <int> state;
+    private property <int> phase: 0;
+    width: 14px;
+    Timer { interval: 90ms; running: root.running; triggered => { root.phase = Math.mod(root.phase + 1, 10); } }
+    MonoText {
+        width: parent.width; height: parent.height; horizontal-alignment: center;
+        font-size: Design.ui-size;
+        text: root.running ? ["⠋","⠙","⠹","⠸","⠼","⠴","⠦","⠧","⠇","⠏"][root.phase]
+            : root.state == 4 ? "✓" : root.state == 3 ? "!" : root.state == 5 ? "×" : root.state == 7 ? "…" : "·";
+        color: root.running || root.state == 3 ? Theme.amber : root.state == 4 ? Theme.green
+            : root.state == 5 ? Theme.danger : Theme.faint;
+    }
+}
+
+// A scrolling area with a scrollbar in the theme: a thin thumb on a hidden track, no
+// arrows. It brightens while hovered or dragged; clicking the track jumps there.
+export component Scroller inherits Rectangle {
+    in-out property <length> viewport-width <=> flick.viewport-width;
+    in-out property <length> viewport-height <=> flick.viewport-height;
+    in-out property <length> viewport-y <=> flick.viewport-y;
+    clip: true;
+    flick := Flickable {
+        width: parent.width; height: parent.height;
+        @children
+    }
+    private property <length> range: max(0px, flick.viewport-height - root.height);
+    private property <length> thumb-height: max(24px, root.height * root.height / max(1px, flick.viewport-height));
+    private property <length> travel: max(1px, root.height - root.thumb-height);
+    private property <length> grab: 0px;
+    if root.range > 0.5px : Rectangle {
+        x: root.width - 7px; width: 7px; height: root.height;
+        Rectangle {
+            x: 3px; y: (-flick.viewport-y / max(1px, root.range)) * root.travel;
+            width: 3px; height: root.thumb-height; border-radius: 1.5px;
+            background: drag.pressed || drag.has-hover ? Theme.box-focus : Theme.box-line;
+        }
+        drag := TouchArea {
+            pointer-event(event) => {
+                if event.kind == PointerEventKind.down {
+                    let top = (-flick.viewport-y / max(1px, root.range)) * root.travel;
+                    root.grab = self.mouse-y >= top && self.mouse-y <= top + root.thumb-height ? self.mouse-y - top : root.thumb-height / 2;
+                    flick.viewport-y = -clamp(self.mouse-y - root.grab, 0px, root.travel) / root.travel * root.range;
+                }
+            }
+            moved => {
+                if self.pressed { flick.viewport-y = -clamp(self.mouse-y - root.grab, 0px, root.travel) / root.travel * root.range; }
+            }
+        }
+    }
+}

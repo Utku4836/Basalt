@@ -1,0 +1,419 @@
+// Sidebar in the terminal idiom: sessions (the upper half), then agents and profiles,
+// each a flat frame with its title on the first line. A session is one conversation;
+// its title comes from the terminal it runs, and its profile picks the CLI accounts
+// its terminals start with.
+import { Metrics } from "metrics.slint";
+import { Theme, Design } from "theme.slint";
+import { Appearance, MonoText } from "typography.slint";
+import { IconKind } from "icons.slint";
+import { IconButton, StatusGlyph, Surface, MenuRow, MenuDivider, Button, TuiBox, Scroller } from "controls.slint";
+
+export struct WorkspaceItem { id: string, title: string, placeholder: bool, directory: string, age: string, tool: string, branch: string, profile: string }
+// id is empty for "default", the user's own setup.
+// A CLI that keeps anything in a profile, with what it keeps ("3 skills · 2 mcp").
+export struct ProfileTool { id: string, detail: string }
+export struct SessionProfileItem { id: string, name: string, sessions: int, tools: [ProfileTool], share-mcp: bool, share-skills: bool }
+export struct AgentItem { workspace:string,pane:string,tab:string,name:string,detail:string,running:bool,active:bool,state:int,workspace-title:string }
+
+// Agent lifecycle as one word.
+export global AgentText {
+    public pure function word(state: int, running: bool) -> string {
+        return running || state == 1 ? "working" : state == 3 ? "waiting" : state == 4 ? "done"
+            : state == 5 ? "error" : state == 6 ? "closed" : state == 7 ? "starting" : "idle";
+    }
+    public pure function tint(state: int, running: bool) -> color {
+        return running || state == 1 || state == 3 ? Theme.amber : state == 5 ? Theme.danger : state == 4 ? Theme.green : Theme.faint;
+    }
+}
+
+// Two-line rows: a name, and a faint detail line under it.
+global Rows {
+    out property <length> line: Appearance.text-size(11px) * 1.35;
+    out property <length> height: Design.row-height + self.line;
+}
+
+// One conversation: title (or live agent status beside it), then profile and age.
+component SessionRow inherits Rectangle {
+    in property <WorkspaceItem> item;
+    in property <bool> selected;
+    in property <[AgentItem]> agents;
+    in property <bool> editing;
+    callback open;
+    callback menu(length);
+    callback rename(string);
+    out property <bool> hot: touch.has-hover || more.hovered;
+    height: Rows.height;
+    accessible-role: button; accessible-label: root.item.title;
+    accessible-description: root.item.profile + " · " + root.item.age;
+    accessible-action-default => { root.open(); }
+    // A working or waiting agent marks the session beside its title.
+    for agent in root.agents : StatusGlyph {
+        visible: agent.workspace == root.item.id && (agent.running || agent.state == 3 || agent.state == 5);
+        x: 7px; y: 3px; width: 14px; height: Design.row-height - 6px; running: agent.running; state: agent.state;
+    }
+    if root.editing : Rectangle {
+        x: 18px; y: 2px; width: max(0px, parent.width - 26px); height: Design.row-height - 4px;
+        border-width: 1px; border-color: Theme.box-focus;
+        TextInput {
+            x: 6px; width: max(0px, parent.width - 12px); height: parent.height;
+            text: root.item.title; single-line: true; vertical-alignment: center;
+            font-family: Appearance.mono; font-size: Design.ui-size; color: Theme.selected-text;
+            selection-background-color: Theme.box-focus;
+            accessible-label: "Session Name";
+            init => { self.focus(); self.select-all(); }
+            accepted => { root.rename(self.text); }
+        }
+    }
+    if !root.editing : MonoText {
+        x: 24px; y: 3px; width: max(0px, parent.width - self.x - (root.hot ? 30px : 8px)); height: Design.row-height - 6px;
+        text: root.item.title; overflow: elide; font-size: Design.ui-size;
+        // "Session #N" stays faint until the terminal reports a real title.
+        color: root.selected || root.hot ? Theme.selected-text : root.item.placeholder ? Theme.faint : Theme.muted;
+    }
+    MonoText {
+        x: 24px; y: Design.row-height - 4px; width: max(0px, parent.width - self.x - 8px); height: Rows.line;
+        text: root.item.profile + " · " + root.item.age; overflow: elide;
+        color: Theme.faint; font-size: Design.small-size;
+    }
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.open(); }
+        pointer-event(event) => {
+            if event.kind == PointerEventKind.down && event.button == PointerEventButton.right { root.menu(self.mouse-y); }
+        }
+    }
+    more := IconButton {
+        visible: root.hot;
+        x: parent.width - 24px; y: 3px + (Design.row-height - 6px - self.height) / 2; width: 20px; height: 20px;
+        icon: IconKind.more; label: "Session Options";
+        clicked => { root.menu(root.height); }
+    }
+}
+
+// One running agent: status, name, state word. Opens its session.
+component AgentRow inherits Rectangle {
+    in property <AgentItem> agent;
+    in property <bool> current;
+    callback open;
+    height: Design.row-height;
+    accessible-role: button; accessible-label: "Agent " + root.agent.name;
+    accessible-description: root.agent.workspace-title;
+    accessible-action-default => { root.open(); }
+    StatusGlyph { x: 7px; width: 14px; height: parent.height; running: root.agent.running; state: root.agent.state; }
+    MonoText {
+        x: 24px; width: max(0px, parent.width - self.x - state.width - 14px); height: parent.height;
+        text: root.agent.name; overflow: elide; font-size: Design.ui-size;
+        color: root.current || touch.has-hover ? Theme.selected-text : Theme.muted;
+    }
+    state := MonoText {
+        x: parent.width - self.width - 8px; width: self.preferred-width; height: parent.height;
+        text: root.agent.running && root.agent.detail != "" ? root.agent.detail : AgentText.word(root.agent.state, root.agent.running);
+        color: AgentText.tint(root.agent.state, root.agent.running); font-size: Design.small-size;
+    }
+    touch := TouchArea { mouse-cursor: pointer; clicked => { root.open(); } }
+}
+
+// One CLI inside an open profile: open its folder, or sign out (asks once more).
+component ProfileToolRow inherits Rectangle {
+    in property <string> tool;
+    in property <string> detail;
+    callback action(string);
+    private property <bool> confirming: false;
+    // The actions appear on the pointed row, so what a CLI keeps has the room otherwise.
+    private property <bool> acting: row-touch.has-hover || open-touch.has-hover || reset-touch.has-hover || root.confirming;
+    height: Rows.line + 6px;
+    row-touch := TouchArea {}
+    name := MonoText {
+        x: 24px; width: min(self.preferred-width, max(0px, parent.width - self.x - 8px)); height: parent.height;
+        text: root.tool; overflow: elide; color: root.acting ? Theme.text : Theme.muted; font-size: Design.small-size;
+    }
+    MonoText {
+        x: name.x + name.width + 8px; width: max(0px, parent.width - self.x - (root.acting ? actions.width + 16px : 8px)); height: parent.height;
+        text: root.detail; overflow: elide; color: Theme.faint; font-size: Design.small-size;
+    }
+    // Transparent rather than hidden: the actions stay reachable for assistive tools.
+    actions := HorizontalLayout {
+        opacity: root.acting ? 1 : 0;
+        x: parent.width - self.width - 8px; width: self.preferred-width; height: parent.height; spacing: 10px;
+        Rectangle {
+            width: open-text.preferred-width;
+            accessible-role: button; accessible-label: "Open " + root.tool + " Folder";
+            accessible-action-default => { root.action("open"); }
+            open-text := MonoText {
+                width: parent.width; height: parent.height; text: "folder"; font-size: Design.small-size;
+                color: open-touch.has-hover ? Theme.selected-text : Theme.faint;
+            }
+            open-touch := TouchArea { mouse-cursor: pointer; clicked => { root.confirming = false; root.action("open"); } }
+        }
+        Rectangle {
+            width: reset-text.preferred-width;
+            accessible-role: button; accessible-label: (root.confirming ? "Confirm Sign Out of " : "Sign Out of ") + root.tool;
+            accessible-action-default => { if root.confirming { root.confirming = false; root.action("reset"); } else { root.confirming = true; } }
+            reset-text := MonoText {
+                width: parent.width; height: parent.height; text: root.confirming ? "sure?" : "sign out"; font-size: Design.small-size;
+                color: root.confirming || reset-touch.has-hover ? Theme.danger : Theme.faint;
+            }
+            reset-touch := TouchArea {
+                mouse-cursor: pointer;
+                clicked => { if root.confirming { root.confirming = false; root.action("reset"); } else { root.confirming = true; } }
+            }
+        }
+    }
+}
+
+// Sharing one kind of data with the other profiles that share it: "[x] share mcp servers".
+component ShareRow inherits Rectangle {
+    in property <string> label;
+    in property <bool> on;
+    callback toggled;
+    height: Rows.line + 6px;
+    accessible-role: checkbox; accessible-label: root.label; accessible-checkable: true; accessible-checked: root.on;
+    accessible-action-default => { root.toggled(); }
+    MonoText {
+        x: 24px; width: max(0px, parent.width - self.x - 8px); height: parent.height;
+        text: (root.on ? "[x] " : "[ ] ") + root.label; overflow: elide; font-size: Design.small-size;
+        color: touch.has-hover ? Theme.selected-text : root.on ? Theme.muted : Theme.faint;
+    }
+    touch := TouchArea { mouse-cursor: pointer; clicked => { root.toggled(); } }
+}
+
+// One profile: name and session count, then the CLIs that store anything in it.
+// Click to use it for the current session; click the current one again to show its
+// CLIs (folder, sign out); right-click to rename or delete it here.
+component ProfileRow inherits Rectangle {
+    in property <SessionProfileItem> item;
+    in property <bool> current;
+    in property <bool> editing;
+    in property <bool> open;
+    callback pick;
+    callback edit;
+    callback rename(string);
+    callback remove;
+    callback tool-action(string, string);
+    callback share(string, bool);
+    // Profiles other than default share MCP servers and skills with each other.
+    private property <int> shares: root.item.id != "" ? 2 : 0;
+    height: Rows.height + (root.open ? (root.item.tools.length + root.shares) * (Rows.line + 6px) + 4px : 0px);
+    accessible-role: button; accessible-label: "Profile " + root.item.name;
+    accessible-description: root.item.sessions + " sessions";
+    accessible-action-default => { root.pick(); }
+    MonoText {
+        x: 8px; y: 3px; width: 14px; height: Design.row-height - 6px;
+        text: root.current ? "●" : ""; color: Theme.selected-text; font-size: Design.small-size;
+    }
+    if !root.editing : MonoText {
+        x: 24px; y: 3px; width: max(0px, parent.width - self.x - count.width - 14px); height: Design.row-height - 6px;
+        text: root.item.name; overflow: elide; font-size: Design.ui-size;
+        color: root.current || touch.has-hover ? Theme.selected-text : Theme.muted;
+    }
+    count := MonoText {
+        visible: !root.editing;
+        x: parent.width - self.width - 8px; y: 3px; width: self.preferred-width; height: Design.row-height - 6px;
+        text: root.item.sessions == 1 ? "1 session" : root.item.sessions + " sessions";
+        color: Theme.faint; font-size: Design.small-size;
+    }
+    MonoText {
+        x: 24px; y: Design.row-height - 4px; width: max(0px, parent.width - self.x - 8px); height: Rows.line;
+        text: root.item.id == "" ? "your own setup" : root.item.tools.length == 0 ? "no cli used yet"
+            : root.open ? "cli settings" : root.item.tools.length == 1 ? "1 cli" : root.item.tools.length + " clis";
+        overflow: elide; color: Theme.faint; font-size: Design.small-size;
+    }
+    for tool[index] in root.open ? root.item.tools : [] : ProfileToolRow {
+        y: Rows.height + index * self.height; width: parent.width;
+        tool: tool.id; detail: tool.detail;
+        action(name) => { root.tool-action(tool.id, name); }
+    }
+    if root.open && root.shares > 0 : ShareRow {
+        y: Rows.height + root.item.tools.length * self.height; width: parent.width;
+        label: "share mcp servers"; on: root.item.share-mcp;
+        toggled => { root.share("mcp", !root.item.share-mcp); }
+    }
+    if root.open && root.shares > 0 : ShareRow {
+        y: Rows.height + (root.item.tools.length + 1) * self.height; width: parent.width;
+        label: "share skills"; on: root.item.share-skills;
+        toggled => { root.share("skills", !root.item.share-skills); }
+    }
+    touch := TouchArea {
+        enabled: !root.editing;
+        height: Rows.height; y: 0px;
+        mouse-cursor: pointer;
+        clicked => { root.pick(); }
+        pointer-event(event) => {
+            if root.item.id != "" && event.kind == PointerEventKind.down && event.button == PointerEventButton.right { root.edit(); }
+        }
+    }
+    if root.editing : Rectangle {
+        y: 2px; height: Design.row-height - 4px;
+        Rectangle { x: 20px; width: max(0px, parent.width - 28px - remove.width); border-width: 1px; border-color: Theme.box-focus; }
+        TextInput {
+            x: 26px; width: max(0px, parent.width - 40px - remove.width); height: parent.height;
+            text: root.item.name; single-line: true; vertical-alignment: center;
+            font-family: Design.mono; font-size: Design.ui-size; color: Theme.selected-text;
+            selection-background-color: Theme.box-focus;
+            accessible-label: "Profile Name";
+            init => { self.focus(); self.select-all(); }
+            accepted => { root.rename(self.text); }
+        }
+        remove := Rectangle {
+            x: parent.width - self.width - 4px; width: remove-text.preferred-width + 12px;
+            accessible-role: button; accessible-label: "Delete Profile";
+            accessible-action-default => { root.remove(); }
+            remove-text := MonoText {
+                x: 6px; height: parent.height; text: "delete"; font-size: Design.small-size;
+                color: remove-touch.has-hover ? Theme.danger : Theme.faint;
+            }
+            remove-touch := TouchArea { mouse-cursor: pointer; clicked => { root.remove(); } }
+        }
+    }
+}
+
+export component WorkspaceSidebar inherits Rectangle {
+    in property <[WorkspaceItem]> workspaces;
+    in property <[AgentItem]> agents;
+    in property <string> selected;
+    callback select(string);
+    callback delete(string);
+    callback duplicate(string);
+    callback rename(string, string);
+    // The session whose name is being edited.
+    private property <string> renaming: "";
+    callback new-session;
+    // Profiles, "default" first; profile-id is the current session's ("" for default).
+    in property <[SessionProfileItem]> profiles;
+    in property <string> profile-id;
+    callback profile-select(string);
+    callback profile-new;
+    callback profile-rename(string, string);
+    callback profile-delete(string);
+    callback profile-tool(string, string, string);
+    callback profile-share(string, string, bool);
+    background: transparent;
+    private property <string> editing: "";
+    // The profile whose CLIs are shown.
+    private property <string> open-profile: "";
+
+    // Context menu state for a session row.
+    private property <string> menu-id;
+    private property <string> menu-title;
+    private property <length> menu-y;
+    private property <bool> confirming: false;
+    function open-menu(id: string, title: string, y: length) {
+        root.menu-id = id; root.menu-title = title; root.confirming = false;
+        root.menu-y = clamp(y, 0px, max(0px, root.height - 4 * Design.row-height - 32px));
+        row-menu.show();
+    }
+
+    // The column is laid out like the pane area: frames inset 3px, so neighbours sit
+    // Metrics.box-gap apart and share their top and bottom edges with the panes.
+    private property <length> box-width: max(0px, root.width - Metrics.box-gap - 8px + 3px);
+    // Box titles overhang their frames, so the gap between stacked boxes leaves them room.
+    private property <length> stack-gap: max(Metrics.box-gap, sessions.overhang + 5px);
+    // Sessions take the upper half; agents and profiles share the lower half.
+    private property <length> free-height: max(0px, root.height - 6px - 2 * root.stack-gap);
+    private property <length> sessions-height: (root.free-height + root.stack-gap) / 2;
+    private property <length> lower-height: (root.free-height - root.sessions-height) / 2;
+
+    sessions := TuiBox {
+        x: 8px; y: 3px; width: root.box-width; height: root.sessions-height;
+        title: "sessions"; note: root.workspaces.length;
+        Scroller {
+            x: 2px; y: parent.header; width: parent.width - 4px; height: max(0px, parent.height - self.y - 4px);
+            viewport-width: self.width;
+            VerticalLayout {
+                spacing: 0px; alignment: start;
+                for item in root.workspaces : SessionRow {
+                    item: item; agents: root.agents; selected: root.selected == item.id;
+                    editing: item.id != "" && root.renaming == item.id;
+                    open => { root.renaming = ""; root.select(item.id); }
+                    rename(name) => { root.rename(item.id, name); root.renaming = ""; }
+                    menu(y) => { root.open-menu(item.id, item.title, self.absolute-position.y - root.absolute-position.y + y); }
+                }
+                Rectangle {
+                    height: Design.row-height;
+                    accessible-role: button; accessible-label: "New Session";
+                    accessible-action-default => { root.new-session(); }
+                    MonoText { x: 8px; width: 12px; height: parent.height; text: "+"; color: new-touch.has-hover ? Theme.text : Theme.faint; font-size: Design.ui-size; }
+                    MonoText { x: 24px; width: max(0px, parent.width - self.x - 8px); height: parent.height; text: "new session"; color: new-touch.has-hover ? Theme.text : Theme.faint; font-size: Design.ui-size; overflow: elide; }
+                    new-touch := TouchArea { mouse-cursor: pointer; clicked => { root.new-session(); } }
+                }
+            }
+        }
+    }
+
+    agents-box := TuiBox {
+        x: 8px; y: sessions.y + sessions.height + root.stack-gap; width: root.box-width; height: root.lower-height;
+        title: "agents"; note: root.agents.length;
+        Scroller {
+            x: 2px; y: parent.header; width: parent.width - 4px; height: max(0px, parent.height - self.y - 4px);
+            viewport-width: self.width;
+            VerticalLayout {
+                spacing: 0px; alignment: start;
+                if root.agents.length == 0 : MonoText { x: 24px; height: Design.row-height; text: "no agents running"; color: Theme.faint; font-size: Design.small-size; }
+                for agent in root.agents : AgentRow {
+                    agent: agent; current: agent.workspace == root.selected;
+                    open => { root.select(agent.workspace); }
+                }
+            }
+        }
+    }
+
+    TuiBox {
+        x: 8px; y: agents-box.y + agents-box.height + root.stack-gap; width: root.box-width; height: root.lower-height;
+        title: "profiles"; action: "+"; action-label: "New Profile";
+        act => { root.profile-new(); }
+        Scroller {
+            x: 2px; y: parent.header; width: parent.width - 4px; height: max(0px, parent.height - self.y - 4px);
+            viewport-width: self.width;
+            VerticalLayout {
+                spacing: 0px; alignment: start;
+                for profile in root.profiles : ProfileRow {
+                    item: profile; current: profile.id == root.profile-id; editing: profile.id != "" && root.editing == profile.id;
+                    open: profile.id != "" && root.open-profile == profile.id;
+                    pick => {
+                        root.editing = "";
+                        // The current profile opens and closes its CLI settings.
+                        if profile.id == root.profile-id && profile.id != "" {
+                            root.open-profile = root.open-profile == profile.id ? "" : profile.id;
+                        } else {
+                            root.open-profile = "";
+                            root.profile-select(profile.id);
+                        }
+                    }
+                    tool-action(tool, action) => { root.profile-tool(profile.id, tool, action); }
+                    share(kind, on) => { root.profile-share(profile.id, kind, on); }
+                    edit => { root.editing = profile.id; }
+                    rename(name) => { root.profile-rename(profile.id, name); root.editing = ""; }
+                    remove => { root.profile-delete(profile.id); root.editing = ""; }
+                }
+            }
+        }
+    }
+
+    // Row options. Each action runs before close(): closing tears down the handler's own item.
+    row-menu := PopupWindow {
+        x: 12px; y: root.menu-y; width: max(Appearance.text-size(200px), root.width - 24px);
+        height: root.confirming ? max(112px, Appearance.text-size(12px) * 2.8 + 84px) : 3 * Design.row-height + 9px + 12px;
+        close-policy: close-on-click-outside;
+        Surface {
+            if !root.confirming : VerticalLayout {
+                padding: 6px; spacing: 0px;
+                MenuRow { label: "Rename"; clicked => { root.renaming = root.menu-id; row-menu.close(); } }
+                MenuRow { label: "Duplicate"; clicked => { root.duplicate(root.menu-id); row-menu.close(); } }
+                MenuDivider {}
+                MenuRow { label: "Delete Session…"; danger: true; clicked => { root.confirming = true; } }
+            }
+            if root.confirming : VerticalLayout {
+                padding: 12px; spacing: 10px;
+                MonoText {
+                    text: "Delete “" + root.menu-title + "” and close its terminals?";
+                    color: Theme.text; font-size: Design.ui-size; wrap: word-wrap; height: self.preferred-height; vertical-alignment: top;
+                }
+                HorizontalLayout {
+                    spacing: 6px; alignment: end;
+                    Button { label: "Cancel"; clicked => { root.confirming = false; row-menu.close(); } }
+                    Button { label: "Delete"; kind: 2; clicked => { root.delete(root.menu-id); row-menu.close(); } }
+                }
+            }
+        }
+    }
+}

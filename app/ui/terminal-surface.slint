@@ -1,0 +1,79 @@
+export struct TerminalRun { row: int, column: int, cells: int, text: string, foreground: color, background: color, bold: bool, italic: bool, underline: bool, strike: bool, plain-ascii: bool, default-background: bool }
+// One screen line. Its position comes from its index in the frame, so a line that
+// scrolls keeps its elements and only moves.
+export struct TerminalLine { runs: [TerminalRun] }
+// `grid` is the whole grid drawn on the GPU, in physical pixels; when it is empty
+// the lines are drawn as text instead.
+export struct TerminalFrame { grid: image, lines: [TerminalLine], columns: int, rows: int, cursor-column: int, cursor-row: int, cursor-visible: bool, cursor-color: color, font-size: float, cell-width: float, cell-height: float }
+import { Appearance } from "typography.slint";
+import { Theme } from "theme.slint";
+export global TerminalStyle {
+    in-out property <length> base-font-size: 14px;
+    out property <length> font-size: self.base-font-size * 1.15 * Appearance.terminal-font-percent / 100;
+    // Ships with Windows 11; Nerd Font glyphs fall back per glyph.
+    in-out property <string> font-family: Appearance.mono;
+    in-out property <length> cell-width: 9px;
+    in-out property <length> cell-height: 23px;
+}
+export component TerminalSurface inherits Rectangle {
+    in property <TerminalFrame> frame;
+    in property <int> reset-epoch;
+    changed reset-epoch=>{root.reset-selection();}
+    callback selection(int,int,int,int);
+    private property <int> start-column:-1;private property <int> start-row:-1;
+    private property <int> end-column:-1;private property <int> end-row:-1;
+    public function reset-selection(){root.start-column=-1;root.start-row=-1;root.end-column=-1;root.end-row=-1;}
+    public function clear-selection(){root.reset-selection();root.selection(-1,-1,-1,-1);}
+    public function select(ax:length,ay:length,bx:length,by:length) {
+        root.start-column=clamp(floor(ax/max(1px,root.render-cell-width)),0,max(0,root.frame.columns - 1));
+        root.start-row=clamp(floor(ay/max(1px,root.render-cell-height)),0,max(0,root.frame.rows - 1));
+        root.end-column=clamp(floor(bx/max(1px,root.render-cell-width)),0,max(0,root.frame.columns - 1));
+        root.end-row=clamp(floor(by/max(1px,root.render-cell-height)),0,max(0,root.frame.rows - 1));
+    }
+    public function finish-selection(){root.selection(root.start-column,root.start-row,root.end-column,root.end-row);}
+    private property <bool> forward:root.start-row<root.end-row || (root.start-row==root.end-row && root.start-column<=root.end-column);
+    private property <int> first-row:root.forward ? root.start-row : root.end-row;
+    private property <int> last-row:root.forward ? root.end-row : root.start-row;
+    private property <int> first-column:root.forward ? root.start-column : root.end-column;
+    private property <int> last-column:root.forward ? root.end-column : root.start-column;
+    private property <length> render-font-size: root.frame.font-size > 0 ? root.frame.font-size * 1px : TerminalStyle.font-size;
+    private property <length> render-cell-width: root.frame.cell-width > 0 ? root.frame.cell-width * 1px : TerminalStyle.cell-width;
+    private property <length> render-cell-height: root.frame.cell-height > 0 ? root.frame.cell-height * 1px : TerminalStyle.cell-height;
+    clip: true; background: Theme.terminal; min-width: 0px; min-height: 0px;
+    advance-probe := Text {text:"MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM";font-family:TerminalStyle.font-family;font-size:root.render-font-size;visible:false;accessible-label:"Terminal advance measurement";}
+    if root.frame.grid.width > 0 : Image {
+        x: 0px; y: 0px;
+        width: root.frame.grid.width * 1phx; height: root.frame.grid.height * 1phx;
+        source: root.frame.grid; image-rendering: pixelated;
+    }
+    for line[row] in root.frame.lines : Rectangle {
+        x: 0px; y: row * root.render-cell-height; width: parent.width; height: root.render-cell-height;
+        for run in line.runs : Rectangle {
+            x: run.column * root.render-cell-width; y: 0px;
+            width: run.cells * root.render-cell-width; height: root.render-cell-height;
+            background: run.default-background ? Theme.terminal : run.background;
+            terminal-glyph := Text {
+                x: 0px; y: 0px; width: parent.width; height: parent.height;
+                text: run.text; color: run.foreground;
+                font-family: TerminalStyle.font-family; font-size: root.render-font-size;
+                font-weight: run.bold ? 700 : 400; font-italic: run.italic;
+                letter-spacing: run.plain-ascii ? root.render-cell-width - advance-probe.preferred-width/32 : 0px;
+                vertical-alignment: center; overflow: clip;
+            }
+            if run.underline : Rectangle { y: parent.height - 2px; width: parent.width; height: 1px; background: run.foreground; }
+            if run.strike : Rectangle { y: parent.height * 0.55; width: parent.width; height: 1px; background: run.foreground; }
+        }
+    }
+    for row in root.frame.rows : Rectangle {
+        visible:root.start-row>=0 && row>=root.first-row && row<=root.last-row;
+        x:(row==root.first-row ? root.first-column : 0)*root.render-cell-width;y:row*root.render-cell-height;
+        width:max(0px,((row==root.last-row ? root.last-column+1 : root.frame.columns) - (row==root.first-row ? root.first-column : 0))*root.render-cell-width);
+        height:root.render-cell-height;background:Theme.accent.transparentize(0.78);
+    }
+    // A grid drawn on the GPU draws its own cursor.
+    if root.frame.cursor-visible && root.frame.grid.width == 0 : Rectangle {
+        x: root.frame.cursor-column * root.render-cell-width;
+        y: (root.frame.cursor-row + 1) * root.render-cell-height - 2px;
+        width: root.render-cell-width; height: 2px; background: root.frame.cursor-color;
+    }
+}

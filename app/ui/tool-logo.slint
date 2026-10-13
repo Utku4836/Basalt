@@ -1,0 +1,18 @@
+import {Theme} from "theme.slint";
+// Brand mark of an agent CLI; monochrome marks follow the text color.
+export component ToolLogo inherits Image {
+    in property <string> tool;
+    image-fit:contain;
+    colorize:root.tool=="claude" || root.tool=="crush" || root.tool=="aider" || root.tool=="kimi" || root.tool=="qwen" ? transparent : Theme.text;
+    source:root.tool=="claude" ? @image-url("../assets/cli/claude.png") :
+        root.tool=="codex" ? @image-url("../assets/cli/codex.svg") :
+        root.tool=="opencode" ? @image-url("../assets/cli/opencode.svg") :
+        root.tool=="agy" ? @image-url("../assets/cli/agy.svg") :
+        root.tool=="aider" ? @image-url("../assets/cli/aider.svg") :
+        root.tool=="copilot" ? @image-url("../assets/cli/copilot.svg") :
+        root.tool=="cursor-agent" ? @image-url("../assets/cli/cursor-agent.svg") :
+        root.tool=="amp" ? @image-url("../assets/cli/amp.svg") :
+        root.tool=="goose" ? @image-url("../assets/cli/goose.svg") :
+        root.tool=="crush" ? @image-url("../assets/cli/crush.svg") :
+        root.tool=="qwen" ? @image-url("../assets/cli/qwen.png") : @image-url("../assets/cli/kimi.svg");
+}
