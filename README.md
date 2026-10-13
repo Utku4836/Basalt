@@ -25,15 +25,9 @@ is working, which one is waiting for you and which one has finished.
 
 ## Install
 
-Open PowerShell and run:
-
-```powershell
-iwr https://github.com/Utku4836/Basalt/releases/latest/download/basalt.exe -OutFile basalt.exe -UseBasicParsing; .\basalt.exe
-```
-
-This downloads `basalt.exe` into the current folder and starts it. You can also
-download it from [Releases](https://github.com/Utku4836/Basalt/releases). There is
-no installer: the program is complete on its own, font included.
+Download `basalt.exe` from [Releases](https://github.com/Utku4836/Basalt/releases/latest)
+and run it. There is no installer: the program is complete on its own, font
+included.
 
 The program is not signed yet, so Windows may say it is from an unknown publisher.
 Choose **More info**, then **Run anyway**.
