@@ -53,6 +53,9 @@ pub mod packages;
 
 #[path = "runtime/folders.rs"]
 pub mod folders;
+
+#[path = "runtime/repair.rs"]
+pub mod repair;
 #[path = "runtime/sources.rs"]
 pub mod sources;
 

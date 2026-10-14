@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.1.1 (2026-10-14)
+
+- CLIs installed by Basalt no longer update themselves, which could leave a CLI
+  without its program ("is not recognized as an internal or external command").
+  Basalt keeps them up to date instead, while none of its terminals is running them.
+- A CLI whose program has gone is reinstalled: at start, or when its command is typed,
+  after which the command runs.
+- `basalt.exe` no longer carries the paths of the machine it was built on.
+
 ## 0.1.0 (2026-10-13)
 
 First public release.

@@ -122,6 +122,16 @@ enum GpuSetup {
     Unavailable,
     Attached,
 }
+/// The verification runs' scripted terminal program: beside this one, or where
+/// `BASALT_PTY_PROBE` says.
+fn pty_probe() -> PathBuf {
+    std::env::var_os("BASALT_PTY_PROBE").map(PathBuf::from).unwrap_or_else(|| {
+        std::env::current_exe()
+            .ok()
+            .and_then(|program| program.parent().map(|folder| folder.join("pty-probe.exe")))
+            .unwrap_or_else(|| PathBuf::from("pty-probe.exe"))
+    })
+}
 fn native_background(window: &MainWindow) -> u32 {
     let color = window.global::<basalt::Theme>().get_base();
     (u32::from(color.red()) << 16) | (u32::from(color.green()) << 8) | u32::from(color.blue())
@@ -205,6 +215,8 @@ struct Controller {
     /// When each terminal's lifecycle signal last changed.
     signal_changed: HashMap<Uuid, std::time::Instant>,
     signals: HashMap<Uuid, basalt::agent_bridge::Signal>,
+    /// Catalog CLIs running in some terminal now, which updates leave alone.
+    running_tools: Arc<std::sync::Mutex<std::collections::HashSet<String>>>,
     signal_invalidated: HashMap<Uuid, std::time::Instant>,
     bridge: Option<basalt::agent_bridge::Bridge>,
     engine: Arc<Engine>,
@@ -1045,10 +1057,7 @@ impl Controller {
                         "--verify-cli-catalog" | "--verify-workspace-storage"
                     )
                 })
-                .then(|| {
-                    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-                        .join("../target/debug/pty-probe.exe")
-                });
+                .then(pty_probe);
             let state_file = self.bridge.as_ref().map(|bridge| bridge.path(id));
             let shell_state = self.shell_state(id);
             // Plain terminals run PowerShell with the session prompt; native smoke runs
@@ -1115,8 +1124,7 @@ impl Controller {
                             .map_err(Into::into);
                     }
                     let program = if fixture_mode.is_some() {
-                        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-                            .join("../target/debug/pty-probe.exe")
+                        pty_probe()
                     } else if let Some(powershell) = &powershell {
                         powershell.clone()
                     } else {
@@ -1841,6 +1849,10 @@ fn main() {
         let provider = arguments.get(at + 1).map_or("", String::as_str);
         std::process::exit(basalt::agent_bridge::run_hook(provider));
     }
+    // A shim whose CLI lost its program: have the running app reinstall it.
+    if let Some(at) = arguments.iter().position(|argument| argument == "--repair") {
+        std::process::exit(basalt::repair::request(arguments.get(at + 1).map_or("", String::as_str)));
+    }
     if let Err(error) = run() {
         eprintln!("{error}");
         #[cfg(windows)]
@@ -2012,6 +2024,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         screen_states: HashMap::new(),
         agent_turns: HashMap::new(),
         signal_changed: HashMap::new(),
+        running_tools: Default::default(),
         signals: HashMap::new(),
         signal_invalidated: HashMap::new(),
         bridge: basalt::agent_bridge::Bridge::new(bridge_root).ok(),
@@ -2100,10 +2113,19 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             _ => {}
         });
     }
-    // Shims for CLIs installed in their own folders, so every terminal finds them.
+    // Shims for CLIs installed in their own folders, so every terminal finds them; a CLI
+    // whose program has gone is reinstalled now. Basalt keeps them updated itself.
     {
         let engine = controller.borrow().engine.clone();
-        std::thread::spawn(move || engine.refresh_shims());
+        std::thread::spawn(move || {
+            for tool in engine.refresh_shims() {
+                let _ = engine.repair(&tool);
+            }
+        });
+        if !std::env::args().any(|arg| arg.starts_with("--verify")) {
+            let (engine, running) = (controller.borrow().engine.clone(), controller.borrow().running_tools.clone());
+            std::thread::spawn(move || engine.keep_updated(&running));
+        }
     }
     // Terminal output wakes the panes at once instead of waiting for the next tick.
     {
@@ -3106,6 +3128,24 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                         }
                     }
                     owner.activities = activities;
+                    let running: std::collections::HashSet<String> = owner
+                        .activities
+                        .values()
+                        .map(|activity| activity.id.clone())
+                        .chain(owner.tab_tools.iter().filter(|(id, _)| owner.surfaces.get(*id).is_some_and(|s| !s.exited)).map(|(_, tool)| tool.clone()))
+                        .collect();
+                    if let Ok(mut shared) = owner.running_tools.lock() {
+                        *shared = running;
+                    }
+                }
+                // CLIs whose shims found their program gone, reinstalled one at a time.
+                let repairs = basalt::repair::folder(owner.engine.data_path());
+                for tool in basalt::repair::take(&repairs) {
+                    let (engine, repairs) = (owner.engine.clone(), repairs.clone());
+                    std::thread::spawn(move || {
+                        let result = engine.repair(&tool);
+                        basalt::repair::finish(&repairs, &tool, &result);
+                    });
                 }
                 owner.refresh_agents(&window);
                 let roots = owner

@@ -106,7 +106,18 @@ pub struct Engine {
     identity: ApplicationIdentity,
     catalog: Catalog,
     service: Mutex<Option<Arc<BackendService>>>,
+    /// Held while a CLI is installed, repaired or updated: one at a time.
+    installing: Mutex<()>,
 }
+
+/// Self-updates are off for the CLIs Basalt installs: an update that replaces a
+/// running program inside Basalt's folder can leave it half installed. Basalt updates
+/// them itself (`keep_updated`).
+const NO_SELF_UPDATE: &[(&str, &str, &str)] = &[
+    ("claude", "DISABLE_AUTOUPDATER", "1"),
+    ("copilot", "COPILOT_AUTO_UPDATE", "false"),
+    ("opencode", "OPENCODE_DISABLE_AUTOUPDATE", "true"),
+];
 impl Engine {
     pub fn new(root: DataRoot, identity: ApplicationIdentity) -> Self {
         Self {
@@ -114,6 +125,7 @@ impl Engine {
             identity,
             catalog: Catalog::built_in(),
             service: Mutex::new(None),
+            installing: Mutex::new(()),
         }
     }
     pub fn catalog(&self) -> &Catalog {
@@ -127,6 +139,10 @@ impl Engine {
 
     /// Command shims every session terminal finds first on PATH: installed CLIs live in
     /// their own folders, and these name them.
+    /// The data folder this engine owns.
+    pub fn data_path(&self) -> &std::path::Path {
+        self.root.path()
+    }
     pub fn shim_folder(&self) -> PathBuf {
         self.root.path().join("bin")
     }
@@ -147,8 +163,56 @@ impl Engine {
         std::fs::write(folder.join(format!("{name}.cmd")), format!("{colors}{line} %*\r\n")).map_err(|error| error.to_string())
     }
 
+    /// Keep the catalog CLIs Basalt installed up to date, in place of their own
+    /// self-updates: each is checked every few hours and updated only while no terminal
+    /// runs it (`running` holds the ids of the CLIs running now). Never returns.
+    pub fn keep_updated(&self, running: &Mutex<std::collections::HashSet<String>>) {
+        use basalt_core::tools::install::{
+            download::Http,
+            service::Installer,
+            updates::{Outcome, Updater},
+        };
+        std::thread::sleep(Duration::from_secs(60));
+        let updater = (|| -> Result<_, String> {
+            let service = self.service()?;
+            let host = self.host();
+            let http = || Http::new(&self.identity, &[], Duration::from_secs(600)).map_err(|error| error.to_string());
+            let installer = Installer::new(service.profiles(), self.identity.clone(), host.clone(), Programs::discover(&host), http()?)
+                .map_err(|error| error.to_string())?;
+            Updater::open(service.profiles(), Arc::new(installer), http()?).map_err(|error| error.to_string())
+        })();
+        let (Ok(updater), Ok(runtime)) = (
+            updater,
+            tokio::runtime::Builder::new_multi_thread().worker_threads(2).enable_all().build(),
+        ) else {
+            return;
+        };
+        let cancel = CancellationToken::new();
+        loop {
+            for tool in self.catalog.tools() {
+                if running.lock().map_or(true, |running| running.contains(&tool.id)) {
+                    continue;
+                }
+                let Ok(_one) = self.installing.try_lock() else {
+                    continue;
+                };
+                let outcome = runtime.block_on(updater.check_one(&tool.id, false, &cancel));
+                drop(_one);
+                if matches!(outcome, Ok(Outcome::Updated(_))) {
+                    self.refresh_shims();
+                }
+            }
+            std::thread::sleep(Duration::from_secs(600));
+        }
+    }
+
     /// Install a catalog CLI into its own folder and put its command on PATH.
     pub fn install_recipe(&self, tool_id: &str, cancel: &CancellationToken) -> Result<String, String> {
+        let _one = self.installing.lock().map_err(|_| "Install lock failed")?;
+        self.install_unlocked(tool_id, cancel)
+    }
+
+    fn install_unlocked(&self, tool_id: &str, cancel: &CancellationToken) -> Result<String, String> {
         use basalt_core::tools::install::{download::Http, service::Installer};
         if self.catalog.get(tool_id).is_ok_and(|tool| tool.installer.kind == "npm") {
             self.node()?;
@@ -178,21 +242,83 @@ impl Engine {
         Ok(installed.version)
     }
 
-    /// Shims for catalog CLIs installed in their own folders.
-    pub fn refresh_shims(&self) {
+    /// Shims for catalog CLIs installed in their own folders. A CLI whose shim exists but
+    /// whose program has gone (a failed update, a deleted file) gets a shim that has it
+    /// reinstalled first; its ids are returned.
+    pub fn refresh_shims(&self) -> Vec<String> {
         let programs = Programs::discover(&self.host());
         let claude_hooks = self.claude_hooks().ok();
+        let mut broken = Vec::new();
         for tool in self.catalog.tools() {
-            if let Ok(Some(resolved)) = command::resolve(&self.root, tool, &programs) {
-                let mut prefix = resolved.prefix.clone();
-                // Claude started from a terminal here reports what it does to the agents
-                // list, through hooks given for this run only, never the user's settings.
-                if let (true, Some(hooks)) = (tool.id == "claude", &claude_hooks) {
-                    prefix.extend(["--settings".to_owned(), hooks.display().to_string()]);
+            match command::resolve(&self.root, tool, &programs) {
+                Ok(Some(resolved)) => {
+                    let mut prefix = resolved.prefix.clone();
+                    // Claude started from a terminal here reports what it does to the
+                    // agents list, through hooks given for this run only, never the
+                    // user's settings.
+                    if let (true, Some(hooks)) = (tool.id == "claude", &claude_hooks) {
+                        prefix.extend(["--settings".to_owned(), hooks.display().to_string()]);
+                    }
+                    let _ = self.write_catalog_shim(tool, Some((&resolved.program, &prefix)));
                 }
-                let _ = self.write_shim(&tool.bin, &resolved.program, &prefix, true);
+                Ok(None) if self.shim_folder().join(format!("{}.cmd", tool.bin)).is_file() => {
+                    let _ = self.write_catalog_shim(tool, None);
+                    broken.push(tool.id.clone());
+                }
+                _ => {}
             }
         }
+        broken
+    }
+
+    /// A catalog CLI's shim, with its self-update off. If its program is missing when it
+    /// runs (or `program` is None), Basalt reinstalls the CLI first (`basalt.exe
+    /// --repair`) and the shim then runs again, rewritten. The whole repair is one line:
+    /// cmd reads a batch file as it goes, and this one is replaced meanwhile.
+    fn write_catalog_shim(&self, tool: &Tool, program: Option<(&std::path::Path, &[String])>) -> Result<(), String> {
+        if !crate::packages::plain(&tool.bin) {
+            return Err(format!("Invalid command name {}", tool.bin));
+        }
+        let basalt = std::env::current_exe().map_err(|error| error.to_string())?;
+        let repair = format!("\"{}\" --repair {} && cmd /d /c \"\"%~f0\" %*\" & exit /b", basalt.display(), tool.id);
+        let mut text = String::new();
+        match program {
+            None => text.push_str(&format!("@{repair}
+")),
+            Some((program, prefix)) => {
+                text.push_str(&format!("@if not exist \"{}\" {repair}
+", program.display()));
+                text.push_str("@set \"FORCE_COLOR=3\"
+");
+                for (_, key, value) in NO_SELF_UPDATE.iter().filter(|(id, _, _)| *id == tool.id) {
+                    text.push_str(&format!("@set \"{key}={value}\"
+"));
+                }
+                let mut line = format!("@\"{}\"", program.display());
+                for argument in prefix {
+                    line.push_str(&format!(" \"{argument}\""));
+                }
+                text.push_str(&format!("{line} %*
+"));
+            }
+        }
+        let folder = self.shim_folder();
+        std::fs::create_dir_all(&folder).map_err(|error| error.to_string())?;
+        std::fs::write(folder.join(format!("{}.cmd", tool.bin)), text).map_err(|error| error.to_string())
+    }
+
+    /// Reinstall a catalog CLI whose program has gone, unless another repair already
+    /// brought it back. Returns its version.
+    pub fn repair(&self, tool_id: &str) -> Result<String, String> {
+        let tool = self.catalog.get(tool_id).map_err(|error| error.to_string())?;
+        let _one = self.installing.lock().map_err(|_| "Install lock failed")?;
+        if let Ok(Some(resolved)) = command::resolve(&self.root, tool, &Programs::discover(&self.host())) {
+            if resolved.entry.is_file() {
+                self.refresh_shims();
+                return Ok(resolved.version.unwrap_or_default());
+            }
+        }
+        self.install_unlocked(tool_id, &CancellationToken::new())
     }
 
     /// A settings file holding only the hooks that report Claude's lifecycle to the
